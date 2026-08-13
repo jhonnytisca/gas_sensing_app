@@ -2,13 +2,13 @@ import sys
 import os
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtGui import QIcon
-from gas_sensing_app.gui.dashboard import GasSensingDashboard
+from gas_sensing_app.gui.dashboard import Dashboard
 
 import os
 import sys
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtGui import QIcon
-from src.gas_sensing_app.gui.dashboard import GasSensingDashboard
+from src.gas_sensing_app.gui.dashboard import Dashboard
 
 def main():
     app = QApplication(sys.argv)
@@ -28,7 +28,7 @@ def main():
     else:
         print(f"[WARNING]: Global icon asset not found at: {icon_path}")
         
-    window = GasSensingDashboard()
+    window = Dashboard()
     window.show()
     sys.exit(app.exec())
 

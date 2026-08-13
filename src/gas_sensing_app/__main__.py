@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import QApplication
 from PyQt6.QtGui import QIcon
 
 # Absolute application package calls
-from gas_sensing_app.gui.dashboard import GasSensingDashboard
+from gas_sensing_app.gui.dashboard import Dashboard
 
 def main():
     # --- WINDOWS TASKBAR FIX ---
@@ -34,7 +34,7 @@ def main():
     else:
         print(f"[WARNING]: Package icon asset not found at: {ICON_PATH}")
 
-    window = GasSensingDashboard()
+    window = Dashboard()
     window.show()
     sys.exit(app.exec())
 

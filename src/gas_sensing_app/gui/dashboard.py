@@ -46,7 +46,7 @@ ASSETS_DIR = Path(__file__).parent.parent / "assets"
 # ==============================================================================
 # MAIN GUI WINDOW
 # ==============================================================================
-class GasSensingDashboard(QMainWindow):
+class Dashboard(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Gas Sensing Dashboard")
