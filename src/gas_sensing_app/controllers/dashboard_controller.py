@@ -7,7 +7,8 @@ from PyQt6.QtWidgets import QFileDialog
 
 from gas_sensing_app.core.worker import ExperimentWorker
 from gas_sensing_app.gui.styles.theme_manager import (load_theme,
-                                        update_plot_theme)
+                                                      refresh_style,
+                                                      update_plot_theme)
 
 
 ASSETS_DIR = Path(__file__).parent.parent / "assets"
@@ -41,10 +42,6 @@ class DashboardController:
         )
         update_plot_theme(self.window.mfc_plot, theme)
         update_plot_theme(self.window.res_plot, theme)
-    
-    def refresh_style(self,widget):
-        widget.style().unpolish(widget)
-        widget.style().polish(widget)
         
     def start_recipe_mode(self):
         self.prepare_data_arrays()
@@ -61,7 +58,7 @@ class DashboardController:
             self.window.status_label.setText(f"Loaded: {os.path.basename(file)}")
             self.window.status_label.setProperty("textColor", "success")
             self.window.status_label.setProperty("fontWeight", "bold")
-            self.refresh_style(self.window.status_label)
+            refresh_style(self.window.status_label)
             self.window.start_recipe_btn.setEnabled(True)
     
     def start_manual_mode(self):

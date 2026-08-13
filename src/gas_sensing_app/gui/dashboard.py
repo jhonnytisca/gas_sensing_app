@@ -35,9 +35,10 @@ from gas_sensing_app.core.logger import WriteStream
 
 # Style imports
 from gas_sensing_app.gui.styles.theme_manager import (load_theme,
-                                        DEFAULT_THEME,
-                                        DEFAULT_FONT,
-                                        Theme)
+                                                      refresh_style,
+                                                      DEFAULT_THEME,
+                                                      DEFAULT_FONT,
+                                                      Theme)
 
 ASSETS_DIR = Path(__file__).parent.parent / "assets"
 
@@ -94,7 +95,7 @@ class Dashboard(QMainWindow):
         self.status_label.setObjectName("statusLabel")            
         self.status_label.setProperty("textColor", "primary")
         self.status_label.setProperty("fontWeight", "normal")
-        self.refresh_style(self.status_label)
+        refresh_style(self.status_label)
         self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter) 
 
         res_indicator_layout = QVBoxLayout()
@@ -241,7 +242,7 @@ class Dashboard(QMainWindow):
             cb = QCheckBox(name); cb.setChecked(True)
             cb.setProperty("plotCheckBox", True)
             cb.setStyleSheet(f"color: {color};")
-            self.refresh_style(cb)
+            refresh_style(cb)
             cb.stateChanged.connect(lambda state, item=plot_item: item.setVisible(bool(state)))
             legend_layout.addWidget(cb)
             
@@ -297,9 +298,4 @@ class Dashboard(QMainWindow):
         if self.log_file_obj:
             self.log_file_obj.close()
         event.accept()
-    
-              
-    def refresh_style(self,widget):
-        widget.style().unpolish(widget)
-        widget.style().polish(widget)
         

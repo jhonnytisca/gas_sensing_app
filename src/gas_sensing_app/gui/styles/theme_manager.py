@@ -104,3 +104,7 @@ def load_theme(theme: Theme = DEFAULT_THEME) -> str:
         stylesheet += path.read_text() + "\n"
 
     return replace_qss_assets(stylesheet, theme)
+
+def refresh_style(widget):
+    widget.style().unpolish(widget)
+    widget.style().polish(widget)
