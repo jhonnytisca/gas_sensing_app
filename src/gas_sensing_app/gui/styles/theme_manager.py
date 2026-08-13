@@ -1,7 +1,10 @@
-from pathlib import Path
 import importlib
-import pyqtgraph as pg
 from enum import Enum
+from pathlib import Path
+
+import pyqtgraph as pg
+
+from PyQt6.QtGui import QFontDatabase
 
 
 class Theme(str, Enum):
@@ -9,10 +12,14 @@ class Theme(str, Enum):
     LIGHT = "light"
 
 
-STYLE_DIR = Path(__file__).parent.parent / "assets" / "styles"
-ICON_DIR = Path(__file__).parent.parent / "assets" / "icons"
+STYLE_DIR = Path(__file__).parent.parent.parent / "assets" / "styles"
+ICON_DIR = Path(__file__).parent.parent.parent / "assets" / "icons"
 
 DEFAULT_THEME = Theme.DARK
+
+DEFAULT_FONT = QFontDatabase.systemFont(
+                                QFontDatabase.SystemFont.FixedFont
+                            )
 
 def get_qss_assets(theme: Theme) -> dict[str, Path]:
     """

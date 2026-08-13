@@ -6,7 +6,6 @@ import time
 import yaml
 import queue
 
-import shutil
 from pathlib import Path
 
 # Qt imports
@@ -17,8 +16,7 @@ from PyQt6.QtWidgets import (QMainWindow,
                              QLabel, 
                              QPushButton, 
                              QTabWidget,
-                             QTextEdit, 
-                             QFileDialog, 
+                             QTextEdit,
                              QSpinBox, 
                              QCheckBox, 
                              QGroupBox, 
@@ -27,18 +25,18 @@ from PyQt6.QtWidgets import (QMainWindow,
                              QSplitter,
                              QComboBox)
 
-from PyQt6.QtGui import QFontDatabase, QIcon
+from PyQt6.QtGui import QIcon
 from PyQt6.QtCore import Qt, QTimer
 import pyqtgraph as pg
 
 # Core imports
 from gas_sensing_app.core.logger import WriteStream
-from gas_sensing_app.core.worker import ExperimentWorker
+
 
 # Style imports
-from gas_sensing_app.gui.styles import (load_theme,
-                                        update_plot_theme,
+from gas_sensing_app.gui.styles.theme_manager import (load_theme,
                                         DEFAULT_THEME,
+                                        DEFAULT_FONT,
                                         Theme)
 
 ASSETS_DIR = Path(__file__).parent.parent / "assets"
@@ -48,7 +46,9 @@ ASSETS_DIR = Path(__file__).parent.parent / "assets"
 # ==============================================================================
 class Dashboard(QMainWindow):
     def __init__(self):
+        
         super().__init__()
+        
         self.setWindowTitle("Gas Sensing Dashboard")
         self.resize(1400, 850)
         
@@ -59,20 +59,14 @@ class Dashboard(QMainWindow):
         self.setStyleSheet(load_theme(DEFAULT_THEME))
 
         # Load the window icon properly
-        if os.path.exists(icon_path):
+        if icon_path.exists():
             self.setWindowIcon(QIcon(str(icon_path)))
-
-        self.system_mono = QFontDatabase.systemFont(
-                                QFontDatabase.SystemFont.FixedFont
-                            )
         
         self.config_path = "config.yaml" 
-        self.recipe_path = None
-        self.log_file_obj = None  
         self.data_history = {"time": [], "resistance": [], "flows": [[], [], [], []], "shutter": []}
+        self.log_file_obj = None  
         self.console_queue = queue.Queue()
 
-        self._create_dummy_files()
         self._setup_print_logging()
 
         main_widget = QWidget()
@@ -92,9 +86,7 @@ class Dashboard(QMainWindow):
         for theme in Theme:
             self.theme_selector.addItem(theme.value.capitalize(), theme)
         self.theme_selector.setObjectName("themeSelectorComboBox")
-        self.theme_selector.currentIndexChanged.connect(
-            self.change_theme
-        )
+
         theme_selector_layout.addWidget(self.theme_selector)
 
 # REPLACED OLD LIGHT STYLES WITH HIGH-CONTRAST LABELS:
@@ -110,7 +102,7 @@ class Dashboard(QMainWindow):
         
         self.res_display = QLabel("--- Ω") # Resistance Display 
         self.res_display.setObjectName("resistanceLabel")
-        self.res_display.setFont(self.system_mono)
+        self.res_display.setFont(DEFAULT_FONT)
         self.res_display.setAlignment(Qt.AlignmentFlag.AlignCenter)
         res_indicator_layout.addWidget(self.res_display)
         
@@ -122,11 +114,10 @@ class Dashboard(QMainWindow):
         recipe_layout = QVBoxLayout(recipe_tab)
         self.load_recipe_btn = QPushButton("Load YAML Recipe...")
         self.load_recipe_btn.setObjectName("loadRecipeButton")
-        self.load_recipe_btn.clicked.connect(self.select_recipe)
+        
         self.start_recipe_btn = QPushButton("RUN RECIPE")
         self.start_recipe_btn.setObjectName("runRecipeButton")
         self.start_recipe_btn.setEnabled(False) 
-        self.start_recipe_btn.clicked.connect(self.start_recipe_mode)
         recipe_layout.addWidget(QLabel("Recipe Automation Controls:"))
         recipe_layout.addWidget(self.load_recipe_btn)
         recipe_layout.addSpacing(10)
@@ -138,8 +129,7 @@ class Dashboard(QMainWindow):
         manual_layout = QVBoxLayout(manual_tab)
         self.start_manual_btn = QPushButton("START MANUAL SESSION")
         self.start_manual_btn.setObjectName("manualSessionButton")
-        self.start_manual_btn.clicked.connect(self.start_manual_mode)
-
+        
         input_group = QGroupBox("Manual Target Adjustments")
         grid = QGridLayout(input_group)
         
@@ -161,8 +151,7 @@ class Dashboard(QMainWindow):
         self.apply_manual_btn = QPushButton("Apply Setpoint Changes")
         self.apply_manual_btn.setObjectName("applySetpointButton")
         self.apply_manual_btn.setEnabled(False)
-        self.apply_manual_btn.clicked.connect(self.apply_manual_changes)
-
+        
         manual_layout.addWidget(self.start_manual_btn)
         manual_layout.addWidget(input_group)
         manual_layout.addWidget(self.apply_manual_btn)
@@ -171,8 +160,7 @@ class Dashboard(QMainWindow):
         self.stop_btn = QPushButton("STOP ENGINE (Emergency)")
         self.stop_btn.setObjectName("stopButton")
         self.stop_btn.setEnabled(False)
-        self.stop_btn.clicked.connect(self.stop_experiment)
-
+        
         console_layout = QVBoxLayout()
         console_layout.addWidget(QLabel("Live System Console Log:"))
         
@@ -181,7 +169,7 @@ class Dashboard(QMainWindow):
         self.console_display.setReadOnly(True)
         
         self.console_display.setObjectName("consoleLogText")
-        self.console_display.setFont(self.system_mono)
+        self.console_display.setFont(DEFAULT_FONT)
         console_layout.addWidget(self.console_display)
 
         self.control_tabs.addTab(recipe_tab, "Automated Recipe")
@@ -297,89 +285,6 @@ class Dashboard(QMainWindow):
             cursor.insertText(text_to_append); self.console_display.setTextCursor(cursor)
             self.console_display.ensureCursorVisible()
 
-    def select_recipe(self):
-        file, _ = QFileDialog.getOpenFileName(self, "Select YAML Recipe", "", "YAML Files (*.yaml)")
-        if file:
-            self.recipe_path = file
-            self.status_label.setText(f"Loaded: {os.path.basename(file)}")
-            self.status_label.setProperty("textColor", "success")
-            self.status_label.setProperty("fontWeight", "bold")
-            self.refresh_style(self.status_label)
-            self.start_recipe_btn.setEnabled(True)
-
-    def prepare_data_arrays(self):
-        self.data_history = {"time": [], "resistance": [], "flows": [[], [], [], []], "shutter": []}
-        self.res_curve.setData([], [])
-        self.shutter_curve.setData([], [])
-        for curve in self.mfc_curves: curve.setData([], [])
-
-    def start_recipe_mode(self):
-        self.prepare_data_arrays()
-        self.worker = ExperimentWorker(self.config_path, self.recipe_path, mode='recipe')
-        self.connect_and_start_worker()
-        self.control_tabs.setTabEnabled(1, False) 
-        self.start_recipe_btn.setEnabled(False)
-        self.load_recipe_btn.setEnabled(False)
-
-    def start_manual_mode(self):
-        self.prepare_data_arrays()
-        self.worker = ExperimentWorker(self.config_path, mode='manual')
-        self.connect_and_start_worker()
-        self.control_tabs.setTabEnabled(0, False) 
-        self.start_manual_btn.setEnabled(False)
-        self.apply_manual_btn.setEnabled(True)
-        self.apply_manual_changes()
-
-    def connect_and_start_worker(self):
-        self.worker.data_sig.connect(self.update_live_data)
-        self.worker.status_sig.connect(self.update_status)
-        self.worker.error_sig.connect(self.handle_worker_error)
-        self.worker.finished_sig.connect(self.on_experiment_finished)
-        self.stop_btn.setEnabled(True)
-        self.worker.start()
-
-    def apply_manual_changes(self):
-        if hasattr(self, 'worker') and self.worker.isRunning():
-            flow_targets = {
-                1: self.mfc1_val.value(), 2: self.mfc2_val.value(),
-                3: self.mfc3_val.value(), 4: self.mfc4_val.value()
-            }
-            # CHANGED: Extracts the manual targets directly as a clean boolean state flag
-            shutter_open_target = self.shutter_checkbox.isChecked()
-            self.worker.update_manual_setpoints(shutter_open_target, flow_targets)
-            print(f"[Manual Mode Update]: Staging Shutter_Open={shutter_open_target}, Flows={list(flow_targets.values())}")
-
-    def update_live_data(self, data):
-        self.res_display.setText(f"{data['resistance']:.4e} Ω")
-        elapsed_t = len(self.data_history['time'])
-        self.data_history['time'].append(elapsed_t)
-        
-        self.data_history['resistance'].append(data['resistance'])
-        self.res_curve.setData(self.data_history['time'], self.data_history['resistance'])
-        
-        self.data_history['shutter'].append(data['shutter'])
-        self.shutter_curve.setData(self.data_history['time'], self.data_history['shutter'])
-        
-        for i in range(4):
-            self.data_history['flows'][i].append(data['flows'][i])
-            self.mfc_curves[i].setData(self.data_history['time'], self.data_history['flows'][i])
-
-    def update_status(self, text): self.status_label.setText(text)
-    def handle_worker_error(self, err): print(f"[CRITICAL WARNING]: {err}"); self.stop_experiment()
-    def stop_experiment(self):
-        if hasattr(self, 'worker') and self.worker.isRunning(): self.worker.is_running = False
-
-    def on_experiment_finished(self, log_path):
-        self.stop_btn.setEnabled(False)
-        self.apply_manual_btn.setEnabled(False)
-        self.control_tabs.setTabEnabled(0, True)
-        self.control_tabs.setTabEnabled(1, True)
-        self.start_manual_btn.setEnabled(True)
-        if self.recipe_path: self.start_recipe_btn.setEnabled(True)
-        self.load_recipe_btn.setEnabled(True)
-        print(f"Hardware loop cleanly halted. Session log saved to: {log_path}")
-
-    
     def closeEvent(self, event):
     #Intercepts window close to ensure background threads are safely killed.
         if hasattr(self, 'worker') and self.worker.isRunning():
@@ -393,81 +298,8 @@ class Dashboard(QMainWindow):
             self.log_file_obj.close()
         event.accept()
     
-    def _create_dummy_files(self):
-        """
-        Ensures the local lab computer runtime workspace folders and files exist.
-        Copies raw templates from the assets folder to preserve structural comments.
-        """
-        # Define template files paths
-        template_config = ASSETS_DIR / "config.template.yaml"
-        template_recipe = ASSETS_DIR / "recipe.template.yaml"
-        
-        # 1. Check and copy live config.yaml fallback
-        if not os.path.exists(self.config_path):
-            if template_config.exists():
-                shutil.copy(template_config, self.config_path)
-                print("[System Info] Generated local 'config.yaml' from master assets template.")
-            else:
-                # Critical safety net fallback if assets folder is completely missing
-                print("[Critical Warning] 'assets/config.template.yaml' not found! Falling back to safe hardcoded defaults.")
-                fallback_config = {
-                    'hardware': {
-                        'use_mock': True,
-                        'keithley_2400': {'port': 'MOCK_PORT', 'auto_range': False, 'manual_range': 200000, 'four_wire': True},
-                        'shutter': {'port': 'MOCK_SHUTTER', 'baud_rate': 115200, 'open_angle': 90, 'closed_angle': 0},
-                        'mfc_controller': {'port': 'MOCK_MFC', 'range_sccm': {1: 1000, 2: 1000, 3: 200, 4: 200}}
-                    },
-                    'logging': {
-                        'data_log': {'folder': 'data', 'filename_prefix': 'sensing_run'},
-                        'console_log': {'enabled': True, 'folder': 'logs', 'filename_prefix': 'log'}
-                    }
-                }
-                with open(self.config_path, 'w') as f:
-                    yaml.dump(fallback_config, f)
-
-        # 2. Extract operational workspace directories dynamically from config.yaml
-        try:
-            with open(self.config_path, 'r') as f:
-                cfg = yaml.safe_load(f) or {}
-        except Exception as e:
-            print(f"[Error] Failed to read config.yaml layout: {e}")
-            cfg = {}
-
-        # Safely fall back to default string folders if parameters are missing inside config.yaml
-        data_dir = cfg.get('logging', {}).get('data_log', {}).get('folder', 'data')
-        log_dir = cfg.get('logging', {}).get('console_log', {}).get('folder', 'logs')
-        recipe_dir = "recipes"
-
-        # 3. Create all dynamic storage directories safely (skips if they already exist)
-        for folder in [data_dir, log_dir, recipe_dir]:
-            Path(folder).mkdir(parents=True, exist_ok=True)
-
-        # 4. Seed the user recipes workspace folder with a base profile if it is empty
-        self.recipe_path = os.path.join(recipe_dir, "dummy_recipe.yaml")
-        if not os.path.exists(self.recipe_path):
-            if template_recipe.exists():
-                shutil.copy(template_recipe, self.recipe_path)
-                print(f"[System Info] Seeded recipes workspace with: {os.path.basename(self.recipe_path)}")
-            else:
-                # Quick programmatic fallback array if the assets/ recipe template is missing
-                fallback_recipe = {
-                    'steps': [
-                        {'name': 'Purge_Phase', 'duration': 10, 'shutter_open': False, 'mfc_flows': {1: 120, 2: 10}},
-                        {'name': 'Expose_Gas', 'duration': 20, 'shutter_open': True, 'mfc_flows': {1: 100, 2: 30}},
-                        {'name': 'Recovery_Phase', 'duration': 15, 'shutter_open': False, 'mfc_flows': {1: 120, 2: 10}}
-                    ]
-                }
-                with open(self.recipe_path, 'w') as f:
-                    yaml.dump(fallback_recipe, f)
-                    
+              
     def refresh_style(self,widget):
         widget.style().unpolish(widget)
         widget.style().polish(widget)
         
-    def change_theme(self,index):
-        theme = self.theme_selector.itemData(index)
-        self.setStyleSheet(
-            load_theme(theme)
-        )
-        update_plot_theme(self.mfc_plot, theme)
-        update_plot_theme(self.res_plot, theme)
