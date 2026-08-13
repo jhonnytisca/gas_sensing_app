@@ -1,75 +1,61 @@
 # src/gas_sensing_app/hardware/keithley_2400.py
 
-import pyvisa
+from pymeasure.instruments.keithley import keithley2400 as K2400
 import time
 
 class Keithley2400:
     def __init__(self, resource_string):
-        #self.rm = pyvisa.ResourceManager()
-        self.rm = pyvisa.ResourceManager('@py')
-        self.inst = self.rm.open_resource(resource_string)
-        self.inst.baud_rate = 9600
-        self.inst.read_termination = '\r'
-        self.inst.write_termination = '\r'
-        self.inst.timeout = 5000
+        # Stablish the connection  
+        self.inst = K2400(
+            resource_string,
+            timeout=5000, 
+            baud_rate=9600
+        )
         
         # Initial Reset and Clear
-        self.inst.write("*RST")
-        self.inst.write("*CLS")
+        self.inst.reset() # *RST
+        self.inst.clear() # *CLS
         print(f"Keithley 2400 connected at {resource_string}.")
         time.sleep(0.5)
 
 
-    def setup_resistance(self, auto_range=True, manual_range=None, four_wire=False):
+    def setup_resistance(self, auto_range=True, manual_range=None, four_wire=False, nplc=1):
         """Configure the device for resistance measurement."""
         sense_str = "4-Wire (Remote)" if four_wire else "2-Wire (Local)"
         print(f"Configuring Keithley for Resistance ({sense_str}, Auto-Range: {auto_range})...")
         
         # Clear any existing data in the buffer
+        #   # TODO check whether this is necessary as there are no buffered measurements coded
         self.inst.write(":TRAC:CLEAR")
         
-        commands = [
-            ":SENS:FUNC 'RES'",        # Select resistance function
-            ":SENS:RES:MODE MAN"       # Manual Ohms mode
-        ]
-        
-        # Configure 2-wire vs 4-wire remote sensing
-        if four_wire:
-            commands.append(":SYST:RSEN ON")   # Remote Sense On (4-wire)
-        else:
-            commands.append(":SYST:RSEN OFF")  # Remote Sense Off (2-wire)
-        
-        # Configure Ranging
-        if auto_range:
-            commands.append(":SENS:RES:RANG:AUTO ON")
-        else:
-            commands.append(":SENS:RES:RANG:AUTO OFF")
-            if manual_range is not None:
-                commands.append(f":SENS:RES:RANG {manual_range}")
-            else:
-                print("Warning: Manual range selected but no range value provided.")
-        
-        commands.append(":OUTP ON")     # Turn output on
-        
-        for cmd in commands:
-            self.inst.write(cmd)
-            time.sleep(0.1)             # Give the old processor time to breathe
-            
+        if four_wire: 
+            # Remote Sense On (4-wire)
+            self.inst.wires = 4 # :SYST:RSEN ON
+        else:  
+            # Remote Sense Off (2-wire)
+            self.inst.wires = 2 # :SYST:RSEN OFF
 
+        self.inst.resistance_mode_auto_enabled = auto_range # :SENS:RES:RANG:AUTO {ON | OFF}
+        self.inst.resistance_nplc = nplc # :SENS:RES:NPLCYCLES {nplc}
+        
+        if manual_range is not None:
+            # By providing a manual_range resistance_range_auto_enabled is implicitly set to False
+            self.inst.resistance_range = manual_range # :SENS:RES:RANG {manual_range}
+            
+            if auto_range == True:
+                print("Info: Manual range selected. Auto range will be ignored.")    
+
+        self.inst.enable_source() # :OUTPUT ON
+    
     def get_reading(self):
         """Call this inside your 1s loop. No setup, just data."""
         try:
-            # We use :FETCH? or :READ? 
-            # :READ? triggers a new acquisition
-            raw_data = self.inst.query(":READ?")
-            parts = raw_data.split(',')
-            return float(parts[2]) if len(parts) >= 3 else None
+            self.inst.resistance # :MEASURE:RESISTANCE?
         except Exception as e:
             return f"Error: {e}"
     
     def close(self):
-        self.inst.write(":OUTP OFF")
-        self.inst.close()
+        self.inst.shutdown() # :OUTPUT OFF
 
 # --- The Master Loop (Your 1s Data Acquisition) ---
 if __name__ == "__main__":
@@ -95,5 +81,4 @@ if __name__ == "__main__":
         print("\nStopping experiment...")
         
     finally:
-        sensor.inst.write(":OUTP OFF")
-        sensor.inst.close()
+        sensor.close()
