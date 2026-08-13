@@ -4,10 +4,12 @@ from pathlib import Path
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtGui import QIcon
 
+from src.gas_sensing_app.config.config import Config
 from src.gas_sensing_app.gui.dashboard import Dashboard
 from src.gas_sensing_app.controllers.dashboard_controller import DashboardController
 
-ASSETS_DIR = Path(__file__).parent / "src" / "gas_sensing_app" / "assets"
+ASSETS_DIR = Path(__file__).resolve().parent / "src" / "gas_sensing_app" / "assets"
+ROOT_DIR =  Path(__file__).resolve().parent
 
 def main():
     app = QApplication(sys.argv)
@@ -26,8 +28,13 @@ def main():
     else:
         print(f"[WARNING]: Global icon asset not found at: {icon_path}")
         
+    # Load configurations
+    # TODO retrieve default configs if file not found
+    config_path = ROOT_DIR / "config.yaml"
+    config = Config(config_path).load()
+        
     # Set main window and main controller
-    window = Dashboard()
+    window = Dashboard(logging_config=config.logging)
     controller = DashboardController(window)
     
     # Show window

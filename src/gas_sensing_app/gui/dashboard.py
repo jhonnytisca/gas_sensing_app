@@ -46,7 +46,7 @@ ASSETS_DIR = Path(__file__).parent.parent / "assets"
 # MAIN GUI WINDOW
 # ==============================================================================
 class Dashboard(QMainWindow):
-    def __init__(self):
+    def __init__(self, logging_config):
         
         super().__init__()
         
