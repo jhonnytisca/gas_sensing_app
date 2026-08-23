@@ -27,3 +27,6 @@ config.yaml
 
 # Ignore code dump
 repo_dump.txt
+
+# Ignore Graphify generated knowledge graph artifacts
+graphify-out/
