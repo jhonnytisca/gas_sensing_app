@@ -15,11 +15,11 @@ ASSETS_DIR = Path(__file__).parent.parent / "assets"
 
 class DashboardController:
     
-    def __init__(self,window):
+    def __init__(self, window, config_path: str | Path = "config.yaml"):
         self.window = window
         
         # Apply configurations
-        self.config_path = "config.yaml" 
+        self.config_path = Path(config_path)
         self.recipe_path = None
         self._create_dummy_files()
         
@@ -199,4 +199,3 @@ class DashboardController:
                 }
                 with open(self.recipe_path, 'w') as f:
                     yaml.dump(fallback_recipe, f)
-      
