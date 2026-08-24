@@ -1,13 +1,12 @@
-import os
 import sys
 from pathlib import Path
 
-from PyQt6.QtWidgets import QApplication
 from PyQt6.QtGui import QIcon
+from PyQt6.QtWidgets import QApplication
 
 from gas_sensing_app.config.config import Config
-from gas_sensing_app.gui.dashboard import Dashboard
 from gas_sensing_app.controllers.dashboard_controller import DashboardController
+from gas_sensing_app.gui.dashboard import Dashboard
 
 PACKAGE_DIR = Path(__file__).resolve().parent
 ASSETS_DIR = PACKAGE_DIR / "assets"
@@ -38,7 +37,7 @@ def main():
 
     # Set main window and main controller
     window = Dashboard(logging_config=config.logging)
-    controller = DashboardController(window, config_path=config_path)
+    controller = DashboardController(window, config_path=config_path)  # noqa: F841
 
     # Show window
     window.show()

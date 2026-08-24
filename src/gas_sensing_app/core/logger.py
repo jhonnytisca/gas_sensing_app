@@ -8,7 +8,7 @@ class WriteStream:
         self.original_stream = original_stream
         self.log_file = log_file
         self.text_queue = text_queue
-        self._prevent_loop = False  
+        self._prevent_loop = False
 
     def write(self, text):
         if self._prevent_loop:

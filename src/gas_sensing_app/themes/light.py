@@ -1,4 +1,1 @@
-PYQTGRAPH_CONFIG = {
-    "background": "#ffffff",
-    "foreground": "#222222"
-}
+PYQTGRAPH_CONFIG = {"background": "#ffffff", "foreground": "#222222"}

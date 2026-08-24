@@ -1,20 +1,20 @@
-import yaml
 from pathlib import Path
+
+import yaml
 
 from .models import (
     AppConfig,
+    ConsoleLogConfig,
+    DataLogConfig,
     HardwareConfig,
     Keithley2400Config,
-    ShutterConfig,
-    MFCControllerConfig,
-    DataLogConfig,
-    ConsoleLogConfig,
     LoggingConfig,
+    MFCControllerConfig,
+    ShutterConfig,
 )
 
 
 class Config:
-
     def __init__(self, path: str | Path):
         self.path = Path(path)
 
@@ -33,27 +33,13 @@ class Config:
     def _load_hardware(self, data: dict) -> HardwareConfig:
         return HardwareConfig(
             use_mock=data["use_mock"],
-
-            keithley_2400=Keithley2400Config(
-                **data["keithley_2400"]
-            ),
-
-            shutter=ShutterConfig(
-                **data["shutter"]
-            ),
-
-            mfc_controller=MFCControllerConfig(
-                **data["mfc_controller"]
-            ),
+            keithley_2400=Keithley2400Config(**data["keithley_2400"]),
+            shutter=ShutterConfig(**data["shutter"]),
+            mfc_controller=MFCControllerConfig(**data["mfc_controller"]),
         )
 
     def _load_logging(self, data: dict) -> LoggingConfig:
         return LoggingConfig(
-            data_log=DataLogConfig(
-                **data["data_log"]
-            ),
-
-            console_log=ConsoleLogConfig(
-                **data["console_log"]
-            ),
+            data_log=DataLogConfig(**data["data_log"]),
+            console_log=ConsoleLogConfig(**data["console_log"]),
         )

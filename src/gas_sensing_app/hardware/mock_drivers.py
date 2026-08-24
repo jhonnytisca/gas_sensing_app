@@ -1,16 +1,15 @@
-# src/gas_sensing_app/hardware/mock_drivers.py
 import random
-import time
+
 
 class MockKeithley2400:
     def __init__(self, port):
         print(f"[MOCK] Keithley 2400 initialized on virtual port {port}")
         self.four_wire = False
         # Reference a shared state tracker if you want interactive physics simulation
-        
+
     def setup_resistance(self, **kwargs):
         print(f"[MOCK] Keithley configured with settings: {kwargs}")
-        self.four_wire = kwargs.get('four_wire', False)
+        self.four_wire = kwargs.get("four_wire", False)
 
     def get_reading(self) -> float:
         """Simulates fluctuating baseline resistance."""
@@ -54,12 +53,17 @@ class MockAeraMFCManager:
             return
 
         if flow < 0:
-            print(f"[MOCK INFO]: Negative flow setpoint ({flow} sccm) ignored on Ch {ch}.")
+            print(
+                f"[MOCK INFO]: Negative flow setpoint ({flow} sccm) ignored on Ch {ch}."
+            )
             return
 
         max_val = self.ranges[ch]
         if flow > max_val:
-            print(f"[MOCK Error]: Specified flow {flow} sccm exceeds maximum capacity ({max_val} sccm) for Ch {ch}. Command Rejected.")
+            print(
+                f"[MOCK Error]: Specified flow {flow} sccm exceeds maximum capacity "
+                f"({max_val} sccm) for Ch {ch}. Command Rejected."
+            )
             return
 
         acc_fraction = 0.0
@@ -70,7 +74,10 @@ class MockAeraMFCManager:
 
         accuracy_threshold = acc_fraction * max_val
         if 0 < flow < accuracy_threshold:
-            print(f"[MOCK Warning]: Setpoint {flow} sccm is below the recommended physical accuracy limit ({accuracy_threshold} sccm) for Ch {ch}.")
+            print(
+                f"[MOCK Warning]: Setpoint {flow} sccm is below the recommended "
+                f"physical accuracy limit ({accuracy_threshold} sccm) for Ch {ch}."
+            )
 
         self.current_flows[ch] = float(flow)
         print(f"[MOCK] MFC Ch {ch} physical valve adjusted to {flow} sccm")
@@ -87,4 +94,3 @@ class MockAeraMFCManager:
 
     def close(self):
         print("[MOCK] MFC controller connection closed.")
-        
