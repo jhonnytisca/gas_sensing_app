@@ -1,0 +1,8 @@
+# Gas flows to apply on acquisition failure, user stop or application close.
+# Units: sccm. All channels omitted here are set to zero.
+# Set the appropriate carrier gas flow here if your experiment requires a purge.
+mfc_flows:
+  1: 0
+  2: 0
+  3: 0
+  4: 0

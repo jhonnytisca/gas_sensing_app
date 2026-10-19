@@ -1,7 +1,8 @@
-from pathlib import Path
 import importlib
-import pyqtgraph as pg
 from enum import Enum
+from pathlib import Path
+
+import pyqtgraph as pg
 
 
 class Theme(str, Enum):
@@ -9,10 +10,13 @@ class Theme(str, Enum):
     LIGHT = "light"
 
 
-STYLE_DIR = Path(__file__).parent.parent / "assets" / "styles"
-ICON_DIR = Path(__file__).parent.parent / "assets" / "icons"
+STYLE_DIR = Path(__file__).parent.parent.parent / "assets" / "styles"
+ICON_DIR = Path(__file__).parent.parent.parent / "assets" / "icons"
 
 DEFAULT_THEME = Theme.DARK
+
+DEFAULT_FONT = None  # Font resolution belongs to a live QApplication.
+
 
 def get_qss_assets(theme: Theme) -> dict[str, Path]:
     """
@@ -26,6 +30,7 @@ def get_qss_assets(theme: Theme) -> dict[str, Path]:
         "@SPINBOX_UP@": theme_icon_dir / "spinbox_up.svg",
         "@SPINBOX_DOWN@": theme_icon_dir / "spinbox_down.svg",
     }
+
 
 def get_pyqtgraph_config(theme: Theme):
     """
@@ -65,13 +70,15 @@ def update_plot_theme(plot, theme: Theme):
 
         axis.setPen(foreground)
         axis.setTextPen(foreground)
-        
+        axis.label.setDefaultTextColor(pg.mkColor(foreground))
+    plot.plotItem.legend.setLabelTextColor(foreground)
+    plot.plotItem.legend.setBrush(pg.mkBrush(background))
+    plot.plotItem.legend.setPen(pg.mkPen(None))
+
+
 def replace_qss_assets(stylesheet: str, theme: Theme) -> str:
     for placeholder, path in get_qss_assets(theme).items():
-        stylesheet = stylesheet.replace(
-            placeholder,
-            str(path).replace("\\","/")
-        )
+        stylesheet = stylesheet.replace(placeholder, str(path).replace("\\", "/"))
     return stylesheet
 
 
@@ -80,10 +87,8 @@ def load_theme(theme: Theme = DEFAULT_THEME) -> str:
     Load QSS and update pyqtgraph default theme.
     """
 
+    theme = Theme(theme)
     apply_pyqtgraph_theme(theme)
-
-    if isinstance(theme, str):
-        theme = Theme(theme)
 
     files = ["base.qss", f"{theme.value}.qss"]
 
@@ -96,4 +101,12 @@ def load_theme(theme: Theme = DEFAULT_THEME) -> str:
             continue
         stylesheet += path.read_text() + "\n"
 
+    colors = importlib.import_module(f"gas_sensing_app.themes.{theme.value}").COLORS
+    for name, color in colors.items():
+        stylesheet = stylesheet.replace(f"@{name}@", color)
     return replace_qss_assets(stylesheet, theme)
+
+
+def refresh_style(widget):
+    widget.style().unpolish(widget)
+    widget.style().polish(widget)

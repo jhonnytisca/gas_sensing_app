@@ -1,90 +1,108 @@
-# src/gas_sensing_app/hardware/mock_drivers.py
-import random
-import time
+"""Deterministic test instruments with the same public methods as real drivers."""
+
+from gas_sensing_app.config.validation import finite
+from gas_sensing_app.core.measurement import Reading
+
 
 class MockKeithley2400:
-    def __init__(self, port):
-        print(f"[MOCK] Keithley 2400 initialized on virtual port {port}")
-        self.four_wire = False
-        # Reference a shared state tracker if you want interactive physics simulation
-        
-    def setup_resistance(self, **kwargs):
-        print(f"[MOCK] Keithley configured with settings: {kwargs}")
-        self.four_wire = kwargs.get('four_wire', False)
+    def __init__(self, port="MOCK"):
+        self.enabled = False
+        self.closed = False
+        self.tick = 0
 
-    def get_reading(self) -> float:
-        """Simulates fluctuating baseline resistance."""
-        baseline = 100.0 if not self.four_wire else 102.5
-        return baseline + random.uniform(-0.05, 0.05)
+    def configure(self, settings):
+        self.settings = settings
+        self.enabled = True
+
+    def read(self, channel=None):
+        self.tick += 1
+        resistance = 1000 + (self.tick % 100) * 0.1
+        voltage = (
+            self.settings.bias_voltage
+            if self.settings.mode == "constant_voltage"
+            else 0.1
+        )
+        current = voltage / resistance
+        return Reading(resistance, voltage, current, "simulated")
+
+    def output_off(self):
+        self.enabled = False
 
     def close(self):
-        print("[MOCK] Keithley connection closed.")
+        self.closed = True
+
+
+class MockKeithley2700(MockKeithley2400):
+    def read(self, channel):
+        self.tick += 1
+        if self.settings.mode == "voltage":
+            return Reading(
+                voltage=0.1 + channel / 10000,
+                status="simulated;current_unavailable_7706;resistance_not_measured",
+            )
+        return Reading(
+            resistance=1000 + channel + self.tick * 0.1,
+            status="simulated;current_unavailable_7706;voltage_not_measured",
+        )
+
+
+class MockGateSupply:
+    def __init__(self):
+        self.voltage = 0.0
+        self.enabled = False
+        self.closed = False
+
+    def configure(self, current_limit):
+        self.current_limit = current_limit
+
+    def set_voltage(self, voltage):
+        self.voltage = voltage
+
+    def output_on(self):
+        self.enabled = True
+
+    def output_off(self):
+        self.enabled = False
+
+    def read_voltage(self):
+        return self.voltage if self.enabled else 0.0
+
+    def close(self):
+        self.closed = True
 
 
 class MockShutterController:
     def __init__(self, port, baud_rate, open_angle=90, closed_angle=0):
-        self.open_angle = open_angle
-        self.closed_angle = closed_angle
         self.is_open = False
-        print(f"[MOCK] Shutter ready on {port} (Baud: {baud_rate})")
 
     def set_speed(self, speed):
         pass
 
-    def set_open(self, should_open: bool):
+    def set_open(self, should_open):
         self.is_open = should_open
-        state = "OPEN" if should_open else "CLOSED"
-        angle = self.open_angle if should_open else self.closed_angle
-        print(f"[MOCK] Shutter hardware moved to {state} ({angle}°)")
 
     def close(self):
-        print("[MOCK] Shutter connection closed.")
+        pass
 
 
 class MockAeraMFCManager:
     def __init__(self, port, ranges, accuracies=None):
-        print(f"[MOCK] MFC Manager active on {port} with channel ceilings {ranges}")
-        self.ranges = ranges or {1: 1000, 2: 1000, 3: 200, 4: 200}
-        self.accuracies = accuracies or {}
-        self.current_flows = {1: 0.0, 2: 0.0, 3: 0.0, 4: 0.0}
+        self.ranges = ranges
+        self.current_flows = dict.fromkeys(ranges, 0.0)
+        self.closed = False
 
-    def set_flow(self, ch: int, flow: float):
+    def set_flow(self, ch, flow):
         if ch not in self.ranges:
-            print(f"[MOCK Error]: Channel {ch} not configured.")
-            return
+            raise ValueError(f"Unknown MFC channel {ch}")
+        self.current_flows[ch] = finite(flow, f"MFC {ch}", 0, self.ranges[ch])
 
-        if flow < 0:
-            print(f"[MOCK INFO]: Negative flow setpoint ({flow} sccm) ignored on Ch {ch}.")
-            return
-
-        max_val = self.ranges[ch]
-        if flow > max_val:
-            print(f"[MOCK Error]: Specified flow {flow} sccm exceeds maximum capacity ({max_val} sccm) for Ch {ch}. Command Rejected.")
-            return
-
-        acc_fraction = 0.0
-        if isinstance(self.accuracies, dict):
-            acc_fraction = self.accuracies.get(ch, 0.0)
-        elif isinstance(self.accuracies, (int, float)):
-            acc_fraction = float(self.accuracies)
-
-        accuracy_threshold = acc_fraction * max_val
-        if 0 < flow < accuracy_threshold:
-            print(f"[MOCK Warning]: Setpoint {flow} sccm is below the recommended physical accuracy limit ({accuracy_threshold} sccm) for Ch {ch}.")
-
-        self.current_flows[ch] = float(flow)
-        print(f"[MOCK] MFC Ch {ch} physical valve adjusted to {flow} sccm")
-
-    def get_actual_flow(self, ch: int) -> float:
-        target = self.current_flows.get(ch, 0.0)
-        if target == 0.0:
-            return 0.0
-        return target + random.uniform(-0.2, 0.2)
+    def get_actual_flow(self, ch):
+        return self.current_flows[ch]
 
     def stop_all(self):
-        print("[MOCK] Emergency Broadcast: All MFC gas lines zeroed out.")
-        self.current_flows = {1: 0.0, 2: 0.0, 3: 0.0, 4: 0.0}
+        for ch in self.ranges:
+            self.set_flow(ch, 0)
 
     def close(self):
-        print("[MOCK] MFC controller connection closed.")
-        
+        # Closing the communication must preserve configured failure/purge flows.
+        self.closed = True

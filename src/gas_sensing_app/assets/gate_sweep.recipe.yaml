@@ -1,0 +1,25 @@
+# Gate settings override UI defaults for this stage only.
+# The gas stage lasts at least duration seconds and always completes its sweep.
+# Gate supply real transport must be integrated; this example runs with Mock.
+steps:
+  - name: Baseline gate sweep
+    duration: 10
+    shutter_open: false
+    mfc_flows: {1: 100, 2: 0, 3: 0, 4: 0}
+    gate:
+      enabled: true
+      mode: sweep
+      start: 0
+      stop: 1
+      step: 0.1
+      dwell_s: 0.1
+  - name: Exposure gate sweep
+    duration: 10
+    mfc_flows: {1: 90, 2: 0, 3: 10, 4: 0}
+    gate:
+      enabled: true
+      mode: sweep
+      start: 1
+      stop: 0
+      step: 0.1
+      dwell_s: 0.1

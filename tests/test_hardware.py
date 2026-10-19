@@ -1,0 +1,57 @@
+"""Verify driver parsing, channel routing and unit conversion without instruments."""
+
+from types import SimpleNamespace
+
+import pytest
+
+from gas_sensing_app.config.models import MeasurementSettings
+from gas_sensing_app.hardware.aera_mfc import AeraMFCManager
+from gas_sensing_app.hardware.keithley_2400 import Keithley2400
+from gas_sensing_app.hardware.keithley_2700 import Keithley2700
+
+
+class Instrument:
+    def __init__(self, reading):
+        self.reading = reading
+        self.commands = []
+
+    def write(self, command):
+        self.commands.append(command)
+
+    def query(self, command):
+        return '0,"No error"' if command == ":SYST:ERR?" else self.reading
+
+
+def test_2400_simultaneous_reading_and_overrange():
+    driver = Keithley2400.__new__(Keithley2400)
+    driver.instrument = Instrument("1.2,0.003,400")
+    driver.configure(MeasurementSettings(wire_mode=4))
+    reading = driver.read()
+    assert (reading.resistance, reading.voltage, reading.current) == (400, 1.2, 0.003)
+    assert ":SYST:RSEN ON" in driver.instrument.commands
+    assert ":SENS:FUNC:ON:ALL" in driver.instrument.commands
+    driver.instrument.reading = "9.91e37,9.91e37,9.91e37"
+    assert driver.read().current is None
+    driver.instrument.reading = "bad"
+    with pytest.raises(ValueError):
+        driver.read()
+
+
+def test_2700_routes_only_force_channel_for_automatic_kelvin_pair():
+    driver = Keithley2700.__new__(Keithley2700)
+    driver.instrument = Instrument("1234.5")
+    driver.configure(
+        MeasurementSettings(instrument="2700", wire_mode=4, last_channel=2)
+    )
+    reading = driver.read(102)
+    assert ':SENS:FUNC "FRES",(@101,102)' in driver.instrument.commands
+    assert driver.instrument.commands[-1] == ":ROUT:CLOS (@102)"
+    assert reading.resistance == 1234.5
+    assert reading.current is None and reading.voltage is None
+
+
+def test_mfc_percent_to_sccm():
+    driver = AeraMFCManager.__new__(AeraMFCManager)
+    driver.ranges = {1: 200}
+    driver.rod4 = SimpleNamespace(ch_1=SimpleNamespace(actual_flow=25))
+    assert driver.get_actual_flow(1) == 50

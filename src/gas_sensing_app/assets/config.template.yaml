@@ -10,6 +10,9 @@ hardware:
     manual_range: 200000
     four_wire: true
 
+  keithley_2700:
+    port: "GPIB0::16::INSTR"
+
   shutter:
     port: "COM4" # Update with actual system COM port
     baud_rate: 115200
@@ -18,6 +21,7 @@ hardware:
 
   mfc_controller:
     port: "COM5" # Update with actual system COM port
+    gas_names: {1: dry_air, 2: wet_air, 3: analyte_1, 4: analyte_2}
     range_sccm:
       1: 1000 # Maximum limits per MFC channel
       2: 1000
@@ -33,3 +37,28 @@ logging:
     enabled: true
     folder: "console_logs"
     filename_prefix: "system_console"
+
+
+measurement:
+  instrument: "2400" # 2400 single sensor, 2700 + 7706 multiple sensors
+  mode: resistance # 2400: resistance/constant_voltage; 2700: resistance/voltage
+  wire_mode: 2
+  slot: 1
+  first_channel: 1
+  last_channel: 1 # 1–20 for 2-wire, 1–10 for 4-wire (paired with n+10)
+  interval_s: 1.0
+  bias_voltage: 1.0 # Drain bias for 2400 constant_voltage; independent of gate
+  compliance: 0.01
+
+gate:
+  enabled: false
+  mode: fixed # fixed or sweep
+  voltage: 0.0
+  start: 0.0
+  stop: 1.0
+  step: 0.1 # Positive increment; descending sweeps are supported
+  dwell_s: 1.0 # Settling time before acquisition at each point
+  current_limit: 0.001
+  max_voltage: 65.0
+
+safety_file: failure_gases.yaml
