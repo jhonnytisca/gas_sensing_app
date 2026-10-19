@@ -72,6 +72,36 @@ def test_2700_routes_only_force_channel_for_automatic_kelvin_pair():
     assert reading.current is None and reading.voltage is None
 
 
+@pytest.mark.parametrize("auto_range", [True, False])
+def test_2400_fixed_voltage_and_range(auto_range):
+    driver = Keithley2400.__new__(Keithley2400)
+    driver.instrument = Instrument("0.5,0.000001,500000")
+    driver.configure(
+        MeasurementSettings(
+            mode="constant_voltage",
+            bias_voltage=0.5,
+            compliance=0.0001,
+            auto_range=auto_range,
+            manual_range=2000000,
+        )
+    )
+    commands = driver.instrument.commands
+    assert ":SOUR:FUNC VOLT" in commands
+    assert ":SOUR:VOLT:LEV 0.5" in commands
+    assert ":SENS:CURR:PROT 0.0001" in commands
+    assert ":SENS:RES:MODE MAN" in commands
+    # Enabling RES under auto ohms changes the instrument back to current source.
+    assert (
+        commands.index(":SENS:RES:MODE MAN")
+        < commands.index(':SENS:FUNC "VOLT","CURR","RES"')
+        < commands.index(":SOUR:FUNC VOLT")
+    )
+    assert ":SENS:RES:MODE AUTO" not in commands
+    assert (":SENS:RES:RANG 2000000" in commands) is not auto_range
+    assert commands[-1] == ":OUTP ON"
+    assert driver.read().resistance == 500000
+
+
 def test_mfc_percent_to_sccm():
     driver = AeraMFCManager.__new__(AeraMFCManager)
     driver.ranges = {1: 200}

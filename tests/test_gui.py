@@ -89,6 +89,32 @@ def test_compact_actions_and_conditional_setup(qtbot, tmp_path):
     controller.close_log()
 
 
+def test_fixed_voltage_and_resistance_range_controls(qtbot, tmp_path):
+    window, controller = make_window(qtbot, tmp_path)
+    setup = window.setup
+    assert setup.measurement_mode.currentData() == "constant_voltage"
+    assert not setup.bias.isHidden()
+    setup.bias.setValue(0.5)
+    setup.compliance.setValue(0.0001)
+    setup.auto_range.setChecked(False)
+    assert not setup.manual_range.isHidden()
+    setup.manual_range.setValue(2000000)
+    measurement, _ = setup.settings()
+    assert measurement.bias_voltage == 0.5
+    assert measurement.compliance == 0.0001
+    assert measurement.manual_range == 2000000
+    assert not measurement.auto_range
+    setup.auto_range.setChecked(True)
+    assert setup.manual_range.isHidden()
+    setup.measurement_mode.setCurrentIndex(0)
+    assert setup.bias.isHidden()
+    assert "automatically" in setup.capability_note.text()
+    setup.instrument.setCurrentIndex(1)
+    assert setup.bias.isHidden()
+    assert setup.auto_range.isHidden()
+    controller.close_log()
+
+
 def test_theme_changes_existing_curves_and_guide_opens(qtbot, tmp_path):
     from gas_sensing_app.gui.styles.theme_manager import Theme
 

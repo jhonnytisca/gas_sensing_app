@@ -1,7 +1,3 @@
-# /// script
-# requires-python = ">=3.10"
-# dependencies = ["pyserial", "pyvisa", "pyvisa-py", "pyyaml"]
-# ///
 """List ports without opening devices; optionally print a guided YAML fragment."""
 
 import argparse

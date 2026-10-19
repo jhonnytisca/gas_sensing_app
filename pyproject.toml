@@ -32,6 +32,7 @@ dependencies = [
 # This registers the application so you can run it globally via terminal command
 [project.scripts]
 sensor = "gas_sensing_app.main:main"
+find-ports = "gas_sensing_app.find_ports:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

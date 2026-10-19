@@ -44,11 +44,19 @@ connection and no rear-terminal selection is sent by the application.
   the corresponding Kelvin sense contacts. Select **4 terminals · Kelvin**.
   Do not interchange gate leads with force or sense leads.
 
-Choose **Resistance** for automatic ohms acquisition. Choose **Current at a fixed
-drain voltage** to apply a drain voltage and read the electrical quantities.
-In that mode, enter the approved **Drain voltage (V)** and **Current limit (A)**.
+Choose **Resistance · automatic test current** for automatic ohms acquisition.
+Choose **Resistance, voltage & current · fixed voltage** to control the applied
+voltage while reading all three electrical quantities. In that mode, enter
+**Applied voltage (V)** and **Current limit (A)**.
 The current limit control applies to this voltage-source mode; it is not a user-set
 excitation current for automatic resistance measurements.
+
+In YAML, select `measurement.mode: constant_voltage` and set
+`measurement.bias_voltage` (volts) and `measurement.compliance` (amps).
+Enable **Resistance autorange** (`measurement.auto_range: true`) or set a suitable
+**Resistance range (Ω)** (`measurement.manual_range`) with autorange disabled.
+An overflow can indicate a range that is too low or an open sensor connection;
+changing voltage alone does not guarantee an on-range measurement.
 
 ### Multiple sensors: Keithley 2700 + 7706
 
@@ -139,6 +147,145 @@ required VISA backend must be available on the laboratory computer.
 Only the selected measuring instrument is connected; a 2700 session does not
 require a 2400. The enabled shutter and configured MFC controller are also opened.
 
+### Find ports and enable serial access on Linux
+
+From the project folder, run:
+
+```bash
+uv run find-ports --yaml
+```
+
+Match each listed adapter to its physical cable. The tool lists ports and prints
+configuration entries; it does not identify an instrument through an ordinary
+USB-to-serial adapter or modify your YAML. Merge its entries into the existing
+sections rather than creating duplicate `hardware` keys. The 2400 and ROD-4 need
+separate ports. Port numbering can change after reconnecting adapters.
+
+If opening a port gives `Permission denied`, inspect its owner/group and your
+active groups:
+
+```bash
+ls -l /dev/ttyUSB0 /dev/ttyUSB1
+id -nG
+```
+
+For ports owned by `root:dialout`, add your account once:
+
+```bash
+sudo usermod -aG dialout "$USER"
+```
+
+Log out of the desktop completely and back in, or restart the computer. Existing
+programs retain their old groups. `id -nG "$USER"` checks saved account membership;
+`id -nG` checks the current session. Alternatively, run `newgrp dialout` and launch
+the app from that new shell. Do not run the entire app as root.
+
+For the tested 2400 RS-232 connection, select RS-232 in the instrument's
+communication menu and use **9600 baud, 8 data bits, no parity, one stop bit,
+no flow control, CR termination**. The driver explicitly uses CR for serial
+commands/replies; other serial settings currently use VISA defaults. A different
+front-panel setup must be aligned before measurement. The shutter's 115200 baud
+setting does not configure the Keithley or ROD-4. Close other applications using
+the same serial port.
+
+### Configuration for a 2400 fixed-voltage measurement
+
+This example uses the ports verified on the development bench; confirm them on
+your computer. Merge it into your full configuration and preserve gas ranges,
+gas names, logging and shutdown settings from the template.
+
+```yaml
+hardware:
+  use_mock: false
+  keithley_2400:
+    port: "ASRL/dev/ttyUSB1::INSTR"
+  mfc_controller:
+    port: "ASRL/dev/ttyUSB0::INSTR"
+  shutter:
+    enabled: false
+
+measurement:
+  instrument: "2400"
+  mode: constant_voltage
+  wire_mode: 2
+  bias_voltage: 1.0       # Source voltage in volts
+  compliance: 0.01       # Current limit in amps: 0.01 A = 10 mA
+  auto_range: true       # Resistance measurement range, not source mode
+  manual_range: 200000.0 # Ohms; ignored while auto_range is true
+  interval_s: 1.0
+
+gate:
+  enabled: false
+```
+
+The values above illustrate the tested setup, not universal sensor limits.
+`measurement` values take precedence over the older `auto_range`, `manual_range`
+and `four_wire` entries under `hardware.keithley_2400`. Use the `measurement`
+section for new configurations. The 2700 can remain disconnected when 2400 is
+selected. The ROD-4 is currently required even for manual electrical acquisition;
+there is no MFC-disable setting. The shutter can be disabled independently. Real
+gate control is not yet supported.
+
+Start with the intended file explicitly:
+
+```bash
+uv run sensor --config /absolute/path/to/config.yaml
+```
+
+The app loads YAML at startup. GUI edits apply to the next run but are not saved
+back to YAML. Stop the current measurement before changing electrical settings;
+restart the app after editing YAML or updating the driver code.
+
+### Measure resistance at a controlled voltage, step by step
+
+1. With output off, connect the sensor to the selected front OUTPUT HI/LO
+   terminals. For four-wire measurements, also connect SENSE HI/LO correctly.
+   Select two terminals if only two leads are attached.
+2. In **1 Measurement**, select **One sensor · Keithley 2400**, then
+   **Resistance, voltage & current · fixed voltage**. Do not select automatic
+   test current if you need to control the voltage.
+3. Set **Applied voltage (V)** and the sensor-appropriate **Current limit (A)**.
+   These control the 2400 source, not the optional gate. Enable resistance
+   autorange initially; use a fixed resistance range only when appropriate for
+   the expected sensor resistance.
+4. Set the reading interval. In **2 Gases**, review all flow setpoints and the
+   gas channel assignments. Review `failure_gases.yaml` for the values to apply
+   after stopping. Leave the gate off for real measurements.
+5. Press **Start measurement**. Check that the 2400 is sourcing volts and that
+   the measured voltage is near the setpoint. The GUI voltage is instrument
+   readback, not a copy of the requested value. Monitor the current and resistance.
+6. If the instrument indicates compliance, it may reduce the actual voltage to
+   respect the current limit. If it indicates overflow, check the sensor contact,
+   wiring and range; a finite displayed/returned number is not by itself proof
+   of a valid resistance measurement. Stop and inspect unexpected readings.
+7. Press **Stop measurement**. Wait for shutdown to finish and confirm output is
+   off. Use the CSV path in Session details; readings are saved automatically.
+
+**Two different meanings of “auto”:** resistance autoranging selects the
+measurement range and is compatible with a fixed source voltage. Automatic-ohms
+mode selects the source current itself and does not honor `bias_voltage` as an
+applied-voltage target. Current compliance is a limit, not a commanded test current.
+
+### Verified 1 V discrepancy and correction
+
+On 2026-10-19, a hardware test reproduced approximately **2.09994 V** with a
+programmed voltage of **1 V**. Querying the instrument showed `SOUR:FUNC? = CURR`:
+the old command order enabled resistance measurement while auto ohms was active,
+switching the source to current. A stored 1 V source level alone did not mean
+the source was operating in voltage mode.
+
+The driver now selects manual ohms before enabling resistance measurement, then
+sets voltage source mode, level and current limit. Three readings after the fix
+were **0.9999185 V, 0.9999185 V and 0.9999176 V** at a 1 V setpoint and 10 mA
+current limit. The instrument confirmed voltage-source mode, manual ohms and no
+instrument error; output was verified off after the test. These are the 2400's
+own readbacks, not an independent calibration with a second meter.
+
+If an older app process still reports about 2 V, stop it and restart with the
+updated code. Check the selected mode, configuration file and physical terminals.
+If the discrepancy remains, record the source function, source level, resistance
+mode, current limit and measured voltage before changing settings further.
+
 ### Set the shutdown gas profile
 
 Before running, edit `failure_gases.yaml` next to the configuration file:
@@ -197,7 +344,8 @@ in either view. Scroll inside the setup page or plot panel to reach all content.
 
 1. Set `hardware.use_mock: true`, then launch the application.
 2. Confirm the **SIMULATION** badge.
-3. In **1 Measurement**, choose **One sensor · Keithley 2400**, **Resistance**,
+3. In **1 Measurement**, choose **One sensor · Keithley 2400**,
+   **Resistance · automatic test current**,
    **2 terminals**, and a reading interval of `1` second.
 4. In **2 Gases → Manual flows**, enter example setpoints within the configured
    limits, such as dry air `100 sccm` with the other channels at zero.
@@ -343,6 +491,12 @@ reaching equipment; follow the laboratory's independent shutdown procedure.
 | Symptom | What to check |
 | --- | --- |
 | Connection error at startup | Correct VISA/serial address, device power, adapter/backend, port permissions; close other programs using the instrument |
+| Serial port permission denied | Check `dialout` membership in the running session; log out/in after adding the account |
+| 2400 VISA timeout | Match serial settings; this driver uses CR termination for RS-232. Confirm the meter and MFC use distinct, correct ports |
+| Requested 1 V but reading about 2 V | Restart with the corrected driver; select fixed-voltage mode. Automatic ohms uses a current source |
+| Voltage below the requested value | Check current compliance, source/load connections and instrument status; do not increase limits without checking the sensor |
+| OVERFLOW | Check for an open circuit, wrong terminals or incorrect Kelvin wiring; enable resistance autorange or select an appropriate range |
+| MFC actual flow remains nonzero at zero setpoint | Check readback, channel scaling, controller/valve state and the physical gas system; zero command is not proof of zero flow |
 | Session fails because the shutter is missing | Configure its actual port or set `hardware.shutter.enabled: false` |
 | Gate transport error | Real EA communication is not integrated; disable gate in both the UI and recipe |
 | No current for a 7706 sensor | Expected hardware limitation; the present card wiring does not support direct current acquisition |

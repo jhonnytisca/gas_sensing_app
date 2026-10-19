@@ -80,6 +80,8 @@ class SetupPanel(QTabWidget):
         for widget in self.findChildren(QAbstractSpinBox):
             widget.valueChanged.connect(self.changed)
         self.gate_enabled.toggled.connect(self.changed)
+        self.auto_range.toggled.connect(self.changed)
+        self.auto_range.toggled.connect(self.topology_changed)
         self.control_tabs.currentChanged.connect(self.changed)
         self.instrument.currentIndexChanged.connect(self.instrument_changed)
         self.wires.currentIndexChanged.connect(self.topology_changed)
@@ -131,6 +133,9 @@ class SetupPanel(QTabWidget):
             widget.setValue(value)
         self.bias = number(cfg.bias_voltage, -200, 200)
         self.compliance = number(cfg.compliance, 1e-9, 1.05, 9)
+        self.auto_range = QCheckBox("Choose resistance range automatically")
+        self.auto_range.setChecked(cfg.auto_range)
+        self.manual_range = number(cfg.manual_range, 1e-9, 1e12, 6)
         self.interval = number(cfg.interval_s, 0.01, 86400, 2)
         for label, widget in (
             ("Connected setup", self.instrument),
@@ -139,8 +144,10 @@ class SetupPanel(QTabWidget):
             ("Card slot", self.slot),
             ("First sensor channel", self.first_channel),
             ("Last sensor channel", self.last_channel),
-            ("Drain voltage (V)", self.bias),
+            ("Applied voltage (V)", self.bias),
             ("Current limit (A)", self.compliance),
+            ("Resistance autorange", self.auto_range),
+            ("Resistance range (Ω)", self.manual_range),
             ("Read every (s)", self.interval),
         ):
             form.addRow(label, widget)
@@ -151,6 +158,10 @@ class SetupPanel(QTabWidget):
         self.compliance.setToolTip(
             "Maximum allowed drain current. "
             "Use the laboratory-approved limit for your sensor."
+        )
+        self.bias.setToolTip(
+            "2400 source voltage in fixed-voltage mode. The current limit may "
+            "reduce the actual voltage. Independent of the gate supply."
         )
         self.capability_note = hint("")
         self.capability_note.setObjectName("infoNote")
@@ -253,10 +264,15 @@ class SetupPanel(QTabWidget):
     def instrument_changed(self):
         self.measurement_mode.blockSignals(True)
         self.measurement_mode.clear()
-        self.measurement_mode.addItem("Resistance", "resistance")
+        self.measurement_mode.addItem(
+            "Resistance · automatic test current"
+            if self.instrument.currentData() == "2400"
+            else "Resistance",
+            "resistance",
+        )
         if self.instrument.currentData() == "2400":
             self.measurement_mode.addItem(
-                "Current at a fixed drain voltage", "constant_voltage"
+                "Resistance, voltage & current · fixed voltage", "constant_voltage"
             )
         else:
             self.measurement_mode.addItem("Voltage", "voltage")
@@ -278,6 +294,10 @@ class SetupPanel(QTabWidget):
         bias = not mux and self.measurement_mode.currentData() == "constant_voltage"
         for widget in (self.bias, self.compliance):
             self.measurement_form.setRowVisible(widget, bias)
+        self.measurement_form.setRowVisible(self.auto_range, not mux)
+        self.measurement_form.setRowVisible(
+            self.manual_range, not mux and not self.auto_range.isChecked()
+        )
         self.capability_note.setText(
             "The 7706 cannot measure current directly. "
             "Empty readings mean unavailable, not zero. "
@@ -287,8 +307,13 @@ class SetupPanel(QTabWidget):
                 else "Each sensor uses one H/L channel."
             )
             if mux
-            else "Resistance, voltage and current come from the 2400. "
-            "Select the wiring that matches the sensor connections."
+            else (
+                "The 2400 applies your voltage with the selected current limit "
+                "and returns resistance, voltage and current."
+                if bias
+                else "The 2400 chooses the test current automatically. Select fixed "
+                "voltage above to control the applied voltage."
+            )
         )
 
     def gate_changed(self):
@@ -325,6 +350,8 @@ class SetupPanel(QTabWidget):
             last_channel=self.last_channel.value(),
             bias_voltage=self.bias.value(),
             compliance=self.compliance.value(),
+            auto_range=self.auto_range.isChecked(),
+            manual_range=self.manual_range.value(),
             interval_s=self.interval.value(),
         )
         gate = replace(

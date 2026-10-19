@@ -11,6 +11,10 @@ connections, laboratory configuration, a first simulation, manual measurements,
 complete recipes, gate sweeps, and troubleshooting. The same guide is available
 through **Operator guide** in the application.
 
+For a 2400 run, see [fixed-voltage configuration and measurement steps](src/gas_sensing_app/assets/manual/operator-guide.md#configuration-for-a-2400-fixed-voltage-measurement).
+The guide includes port discovery, Linux serial permissions, instrument settings,
+GUI/YAML controls, shutdown, and troubleshooting voltage mismatch and overflow.
+
 The workspace separates **Measurement**, **Gases**, and optional **Gate** setup.
 Start and Stop remain visible. Narrow windows offer separate preparation and live
 reading views. Dark and Light buttons update the controls and all plot colors.
@@ -22,6 +26,9 @@ Use Python 3.10 or later. From the project directory:
 ```bash
 uv sync --group dev
 uv run sensor
+# List instrument ports, or generate YAML entries interactively:
+uv run find-ports
+uv run find-ports --yaml
 # Use another configuration, with paths relative to its directory:
 uv run sensor --config /path/to/laboratory/config.yaml
 ```
