@@ -12,6 +12,8 @@ hardware:
 
   keithley_2700:
     port: "GPIB0::16::INSTR"
+    baud_rate: 9600 # RS-232 only; match front panel (factory default is 4800)
+    read_termination: "\r" # RS-232 Tx TERM: CR; FLOW: NONE
 
   shutter:
     port: "COM4" # Update with actual system COM port
@@ -21,7 +23,7 @@ hardware:
 
   mfc_controller:
     port: "COM5" # Update with actual system COM port
-    gas_names: {1: dry_air, 2: wet_air, 3: analyte_1, 4: analyte_2}
+    gas_names: {1: not_connected, 2: reference, 3: analyte, 4: not_connected}
     range_sccm:
       1: 1000 # Maximum limits per MFC channel
       2: 1000
@@ -41,14 +43,16 @@ logging:
 
 measurement:
   instrument: "2400" # 2400 single sensor, 2700 + 7706 multiple sensors
-  mode: resistance # 2400: resistance/constant_voltage; 2700: resistance/voltage
+  mode: constant_voltage # 2400: fixed voltage with R/V/I; 2700: resistance/voltage
   wire_mode: 2
   slot: 1
   first_channel: 1
   last_channel: 1 # 1–20 for 2-wire, 1–10 for 4-wire (paired with n+10)
   interval_s: 1.0
-  bias_voltage: 1.0 # Drain bias for 2400 constant_voltage; independent of gate
-  compliance: 0.01
+  bias_voltage: 1.0 # Applied voltage (V); used in constant_voltage mode
+  compliance: 0.01 # Current limit (A)
+  auto_range: true
+  manual_range: 200000.0 # Ohms; used only when auto_range is false
 
 gate:
   enabled: false

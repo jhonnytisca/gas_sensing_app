@@ -1,8 +1,10 @@
 """Verify driver parsing, channel routing and unit conversion without instruments."""
 
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
+import pyvisa
 
 from gas_sensing_app.config.models import MeasurementSettings
 from gas_sensing_app.hardware.aera_mfc import AeraMFCManager
@@ -20,6 +22,30 @@ class Instrument:
 
     def query(self, command):
         return '0,"No error"' if command == ":SYST:ERR?" else self.reading
+
+
+@pytest.mark.parametrize("serial", [True, False])
+@pytest.mark.parametrize("driver_class", [Keithley2400, Keithley2700])
+def test_meter_serial_termination(monkeypatch, serial, driver_class):
+    instrument = Mock(
+        interface_type=(
+            pyvisa.constants.InterfaceType.asrl
+            if serial
+            else pyvisa.constants.InterfaceType.gpib
+        ),
+        read_termination=None,
+        write_termination="\r\n",
+    )
+    manager = Mock()
+    manager.open_resource.return_value = instrument
+    monkeypatch.setattr(pyvisa, "ResourceManager", lambda: manager)
+    driver = driver_class("ASRL1::INSTR" if serial else "GPIB0::24::INSTR")
+    assert instrument.read_termination == ("\r" if serial else None)
+    assert instrument.write_termination == ("\r" if serial else "\r\n")
+    if serial and driver_class is Keithley2700:
+        assert instrument.baud_rate == 9600
+        assert instrument.flow_control == pyvisa.constants.ControlFlow.none
+    driver.close()
 
 
 def test_2400_simultaneous_reading_and_overrange():
@@ -48,6 +74,51 @@ def test_2700_routes_only_force_channel_for_automatic_kelvin_pair():
     assert driver.instrument.commands[-1] == ":ROUT:CLOS (@102)"
     assert reading.resistance == 1234.5
     assert reading.current is None and reading.voltage is None
+
+
+@pytest.mark.parametrize("slot", [1, 2])
+def test_2700_four_two_wire_sensors(slot):
+    driver = Keithley2700.__new__(Keithley2700)
+    driver.instrument = Instrument("1234.5")
+    settings = MeasurementSettings(instrument="2700", slot=slot, last_channel=4)
+    driver.configure(settings)
+    channels = ",".join(str(slot * 100 + ch) for ch in range(1, 5))
+    assert f':SENS:FUNC "RES",(@{channels})' in driver.instrument.commands
+    for channel in settings.channels:
+        assert driver.read(channel).resistance == 1234.5
+        assert driver.instrument.commands[-1] == f":ROUT:CLOS (@{channel})"
+    driver.output_off()
+    assert driver.instrument.commands[-1] == ":ROUT:OPEN:ALL"
+
+
+@pytest.mark.parametrize("auto_range", [True, False])
+def test_2400_fixed_voltage_and_range(auto_range):
+    driver = Keithley2400.__new__(Keithley2400)
+    driver.instrument = Instrument("0.5,0.000001,500000")
+    driver.configure(
+        MeasurementSettings(
+            mode="constant_voltage",
+            bias_voltage=0.5,
+            compliance=0.0001,
+            auto_range=auto_range,
+            manual_range=2000000,
+        )
+    )
+    commands = driver.instrument.commands
+    assert ":SOUR:FUNC VOLT" in commands
+    assert ":SOUR:VOLT:LEV 0.5" in commands
+    assert ":SENS:CURR:PROT 0.0001" in commands
+    assert ":SENS:RES:MODE MAN" in commands
+    # Enabling RES under auto ohms changes the instrument back to current source.
+    assert (
+        commands.index(":SENS:RES:MODE MAN")
+        < commands.index(':SENS:FUNC "VOLT","CURR","RES"')
+        < commands.index(":SOUR:FUNC VOLT")
+    )
+    assert ":SENS:RES:MODE AUTO" not in commands
+    assert (":SENS:RES:RANG 2000000" in commands) is not auto_range
+    assert commands[-1] == ":OUTP ON"
+    assert driver.read().resistance == 500000
 
 
 def test_mfc_percent_to_sccm():

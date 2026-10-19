@@ -14,6 +14,8 @@ class Keithley2400Config:
 @dataclass
 class Keithley2700Config:
     port: str = "GPIB0::16::INSTR"
+    baud_rate: int = 9600
+    read_termination: str = "\r"
 
 
 @dataclass

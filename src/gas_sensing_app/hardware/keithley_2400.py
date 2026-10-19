@@ -12,6 +12,9 @@ class Keithley2400:
         try:
             self.instrument = self.rm.open_resource(resource_address)
             self.instrument.timeout = 5000
+            if self.instrument.interface_type == pyvisa.constants.InterfaceType.asrl:
+                self.instrument.read_termination = "\r"
+                self.instrument.write_termination = "\r"
             self.instrument.write(":OUTP OFF")
             self.instrument.write("*RST")
             self.instrument.write("*CLS")
@@ -26,22 +29,20 @@ class Keithley2400:
         if settings.mode == "resistance":
             inst.write(":SENS:FUNC 'RES'")
             inst.write(":SENS:RES:MODE AUTO")
-            inst.write(
-                ":SENS:RES:RANG:AUTO " + ("ON" if settings.auto_range else "OFF")
-            )
-            if not settings.auto_range:
-                inst.write(f":SENS:RES:RANG {settings.manual_range}")
         else:
+            # Auto ohms switches the source to current when RES is enabled.
+            inst.write(":SENS:RES:MODE MAN")
+            inst.write(':SENS:FUNC "VOLT","CURR","RES"')
             inst.write(":SOUR:FUNC VOLT")
             inst.write(":SOUR:VOLT:MODE FIX")
             inst.write(f":SOUR:VOLT:LEV {settings.bias_voltage}")
-            inst.write(':SENS:FUNC "VOLT","CURR","RES"')
-            inst.write(":SENS:RES:MODE MAN")
             inst.write(f":SENS:CURR:PROT {settings.compliance}")
         inst.write(":SENS:FUNC:CONC ON")
         inst.write(":SENS:FUNC:ON:ALL")
         inst.write(":SENS:RES:OCOM OFF")
         inst.write(":SENS:RES:RANG:AUTO " + ("ON" if settings.auto_range else "OFF"))
+        if not settings.auto_range:
+            inst.write(f":SENS:RES:RANG {settings.manual_range}")
         inst.write(":FORM:ELEM VOLT,CURR,RES")
         self.check_error()
         inst.write(":OUTP ON")
