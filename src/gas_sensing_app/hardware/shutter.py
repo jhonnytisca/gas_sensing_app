@@ -13,6 +13,7 @@ class ShutterController:
     ):
         self.ser = serial.Serial(port, baudrate, timeout=1)
         time.sleep(2)  # Critical: Wait for Arduino to reboot after serial opening
+        self.ser.reset_input_buffer()  # Discard the controller's startup banner.
 
         # Save custom calibration bounds from configuration
         self.open_angle = open_angle

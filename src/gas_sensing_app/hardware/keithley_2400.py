@@ -12,6 +12,9 @@ class Keithley2400:
         try:
             self.instrument = self.rm.open_resource(resource_address)
             self.instrument.timeout = 5000
+            if self.instrument.interface_type == pyvisa.constants.InterfaceType.asrl:
+                self.instrument.read_termination = "\r"
+                self.instrument.write_termination = "\r"
             self.instrument.write(":OUTP OFF")
             self.instrument.write("*RST")
             self.instrument.write("*CLS")

@@ -1,8 +1,10 @@
 """Verify driver parsing, channel routing and unit conversion without instruments."""
 
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
+import pyvisa
 
 from gas_sensing_app.config.models import MeasurementSettings
 from gas_sensing_app.hardware.aera_mfc import AeraMFCManager
@@ -20,6 +22,26 @@ class Instrument:
 
     def query(self, command):
         return '0,"No error"' if command == ":SYST:ERR?" else self.reading
+
+
+@pytest.mark.parametrize("serial", [True, False])
+def test_2400_serial_termination(monkeypatch, serial):
+    instrument = Mock(
+        interface_type=(
+            pyvisa.constants.InterfaceType.asrl
+            if serial
+            else pyvisa.constants.InterfaceType.gpib
+        ),
+        read_termination=None,
+        write_termination="\r\n",
+    )
+    manager = Mock()
+    manager.open_resource.return_value = instrument
+    monkeypatch.setattr(pyvisa, "ResourceManager", lambda: manager)
+    driver = Keithley2400("ASRL1::INSTR" if serial else "GPIB0::24::INSTR")
+    assert instrument.read_termination == ("\r" if serial else None)
+    assert instrument.write_termination == ("\r" if serial else "\r\n")
+    driver.close()
 
 
 def test_2400_simultaneous_reading_and_overrange():
