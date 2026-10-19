@@ -124,6 +124,10 @@ class SetupPanel(QTabWidget):
         self.slot = ChannelInput()
         self.slot.setRange(1, 2)
         self.slot.setValue(cfg.slot)
+        self.slot.setToolTip(
+            "Physical rear slot containing the 7706 card: slot 1 uses channels "
+            "101–120; slot 2 uses 201–220. Enter local channel numbers below."
+        )
         self.first_channel, self.last_channel = ChannelInput(), QSpinBox()
         for widget, value in (
             (self.first_channel, cfg.first_channel),

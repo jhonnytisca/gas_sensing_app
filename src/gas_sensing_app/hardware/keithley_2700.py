@@ -7,7 +7,7 @@ from gas_sensing_app.core.measurement import Reading, measured
 
 
 class Keithley2700:
-    def __init__(self, resource_address):
+    def __init__(self, resource_address, baud_rate=9600, read_termination="\r"):
         import pyvisa
 
         self.rm = pyvisa.ResourceManager()
@@ -15,6 +15,11 @@ class Keithley2700:
         try:
             self.instrument = self.rm.open_resource(resource_address)
             self.instrument.timeout = 5000
+            if self.instrument.interface_type == pyvisa.constants.InterfaceType.asrl:
+                self.instrument.baud_rate = baud_rate
+                self.instrument.read_termination = read_termination
+                self.instrument.write_termination = "\r"
+                self.instrument.flow_control = pyvisa.constants.ControlFlow.none
             self.instrument.write("*RST")
             self.instrument.write("*CLS")
             self.instrument.write(":ROUT:OPEN:ALL")

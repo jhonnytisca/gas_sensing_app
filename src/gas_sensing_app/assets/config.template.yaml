@@ -12,6 +12,8 @@ hardware:
 
   keithley_2700:
     port: "GPIB0::16::INSTR"
+    baud_rate: 9600 # RS-232 only; match front panel (factory default is 4800)
+    read_termination: "\r" # RS-232 Tx TERM: CR; FLOW: NONE
 
   shutter:
     port: "COM4" # Update with actual system COM port

@@ -30,6 +30,10 @@ class HardwareFactory:
         else:
             from .keithley_2700 import Keithley2700 as cls
         cfg = hw.keithley_2400 if settings.instrument == "2400" else hw.keithley_2700
+        if not hw.use_mock and settings.instrument == "2700":
+            return cls(
+                cfg.port, baud_rate=cfg.baud_rate, read_termination=cfg.read_termination
+            )
         return cls(cfg.port)
 
     def mfc(self):
