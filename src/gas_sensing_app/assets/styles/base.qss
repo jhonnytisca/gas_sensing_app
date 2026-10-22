@@ -33,6 +33,10 @@ QFrame#themeSelector { background: @RAISED@; border: 1px solid @BORDER@; border-
 QFrame#themeSelector QPushButton { padding: 6px 14px; border: 1px solid transparent; color: @MUTED@; }
 QFrame#themeSelector QPushButton:checked { background: @SELECTED@; border-color: @FOCUS@; color: @TEXT@; }
 QFrame#themeSelector QPushButton:focus { border: 2px solid @FOCUS@; }
+QFrame#plotSelector { background: @RAISED@; border: 1px solid @BORDER@; border-radius: 8px; }
+QFrame#plotSelector QToolButton { padding: 6px 9px; border: 1px solid transparent; color: @MUTED@; }
+QFrame#plotSelector QToolButton:checked { background: @SELECTED@; border-color: @FOCUS@; color: @TEXT@; }
+QFrame#plotSelector QToolButton:focus { border: 2px solid @FOCUS@; }
 QComboBox, QSpinBox, QDoubleSpinBox, QLineEdit { background: @SURFACE@; color: @TEXT@; border: 1px solid @BORDER@; border-radius: 5px; min-height: 22px; padding: 5px 8px; selection-background-color: @ACCENT@; selection-color: #ffffff; }
 QComboBox { padding-right: 28px; }
 QComboBox:hover, QSpinBox:hover, QDoubleSpinBox:hover { border-color: @FOCUS@; }
