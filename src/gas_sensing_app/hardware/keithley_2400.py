@@ -15,6 +15,13 @@ class Keithley2400:
             if self.instrument.interface_type == pyvisa.constants.InterfaceType.asrl:
                 self.instrument.read_termination = "\r"
                 self.instrument.write_termination = "\r"
+            identity = self.instrument.query("*IDN?").strip()
+            fields = identity.upper().split(",")
+            if len(fields) < 2 or fields[1].strip() != "MODEL 2400":
+                raise RuntimeError(
+                    f"Expected Keithley 2400 at {resource_address}, "
+                    f"received {identity!r}"
+                )
             self.instrument.write(":OUTP OFF")
             self.instrument.write("*RST")
             self.instrument.write("*CLS")
@@ -71,8 +78,7 @@ class Keithley2400:
             self.instrument.write(":OUTP OFF")
 
     def close(self):
-        try:
-            if self.instrument is not None:
-                self.instrument.close()
-        finally:
-            self.rm.close()
+        # The VISA manager is shared with other drivers, including the MFC.
+        if self.instrument is not None:
+            self.instrument.close()
+            self.instrument = None

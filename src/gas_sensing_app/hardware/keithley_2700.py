@@ -20,6 +20,13 @@ class Keithley2700:
                 self.instrument.read_termination = read_termination
                 self.instrument.write_termination = "\r"
                 self.instrument.flow_control = pyvisa.constants.ControlFlow.none
+            identity = self.instrument.query("*IDN?").strip()
+            fields = identity.upper().split(",")
+            if len(fields) < 2 or fields[1].strip() != "MODEL 2700":
+                raise RuntimeError(
+                    f"Expected Keithley 2700 at {resource_address}, "
+                    f"received {identity!r}"
+                )
             self.instrument.write("*RST")
             self.instrument.write("*CLS")
             self.instrument.write(":ROUT:OPEN:ALL")
@@ -36,6 +43,8 @@ class Keithley2700:
             else ("FRES" if settings.wire_mode == 4 else "RES")
         )
         self.instrument.write(f':SENS:FUNC "{function}",(@{channels})')
+        # READ? after individual relay closure uses the active DMM function.
+        self.instrument.write(f':SENS:FUNC "{function}"')
         self.instrument.write(":FORM:ELEM READ")
         self.instrument.write(":TRIG:COUN 1")
         self.instrument.write(":SAMP:COUN 1")
@@ -62,8 +71,7 @@ class Keithley2700:
                 self.instrument.write(":ROUT:OPEN:ALL")
 
     def close(self):
-        try:
-            if self.instrument is not None:
-                self.instrument.close()
-        finally:
-            self.rm.close()
+        # The VISA manager is shared with other drivers, including the MFC.
+        if self.instrument is not None:
+            self.instrument.close()
+            self.instrument = None
