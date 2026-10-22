@@ -24,6 +24,27 @@ class Instrument:
         return '0,"No error"' if command == ":SYST:ERR?" else self.reading
 
 
+@pytest.mark.parametrize("wires,function", [(2, "RES"), (4, "FRES")])
+def test_2700_live_range_commands_and_readback(wires, function):
+    from dataclasses import replace
+
+    driver = Keithley2700.__new__(Keithley2700)
+    driver.instrument = Mock()
+    driver.instrument.query.side_effect = lambda command: {
+        ":SYST:ERR?": '0,"No error"',
+        ":READ?": "1234.5",
+        f":SENS:{function}:RANG?": "10000",
+    }[command]
+    settings = MeasurementSettings(instrument="2700", wire_mode=wires, last_channel=2)
+    driver.configure(settings)
+    driver.set_resistance_range(replace(settings, auto_range=False, manual_range=10000))
+    driver.instrument.write.assert_any_call(f":SENS:{function}:RANG 10000,(@101,102)")
+    driver.instrument.write.assert_any_call(f":SENS:{function}:RANG 10000")
+    assert driver.read(101).resistance_range == 10000
+    driver.set_resistance_range(settings)
+    driver.instrument.write.assert_any_call(f":SENS:{function}:RANG:AUTO ON")
+
+
 @pytest.mark.parametrize("serial", [True, False])
 @pytest.mark.parametrize("driver_class", [Keithley2400, Keithley2700])
 def test_meter_serial_termination(monkeypatch, serial, driver_class):

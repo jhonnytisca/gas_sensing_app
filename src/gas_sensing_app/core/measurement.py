@@ -10,6 +10,7 @@ class Reading:
     voltage: float | None = None
     current: float | None = None
     status: str = "ok"
+    resistance_range: float | None = None
 
 
 def measured(value: str | float) -> float | None:

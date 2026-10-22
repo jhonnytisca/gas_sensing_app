@@ -129,6 +129,8 @@ class MeasurementSettings:
         finite(self.compliance, "compliance", 1e-9, 1.05)
         finite(self.interval_s, "interval_s", 0.01, 86400)
         finite(self.manual_range, "manual_range", 1e-9, 1e12)
+        if self.instrument == "2700" and self.mode == "resistance":
+            finite(self.manual_range, "2700 resistance range", 100, 100e6)
 
 
 @dataclass

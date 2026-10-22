@@ -5,6 +5,7 @@ from PyQt6.QtWidgets import (
     QApplication,
     QDialog,
     QFrame,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QMainWindow,
@@ -66,7 +67,15 @@ class Dashboard(QMainWindow):
         outer.addWidget(self.actions)
         outer.addWidget(self.build_details())
         self.setup.changed.connect(self.refresh_summary)
+        self.setup.changed.connect(self.update_plot_availability)
+        self.update_plot_availability()
         self.refresh_summary()
+
+    def update_plot_availability(self):
+        self.plots.set_measurement(
+            self.setup.instrument.currentData(),
+            self.setup.measurement_mode.currentData(),
+        )
 
     def build_header(self):
         header = QWidget()
@@ -147,7 +156,7 @@ class Dashboard(QMainWindow):
         heading.addWidget(self.readout, 1)
         self.fit_plots_btn = QPushButton("Fit plots")
         self.fit_plots_btn.setToolTip(
-            "Show the full recorded time range in all four plots."
+            "Show the full recorded time range in the plots."
         )
         heading.addWidget(self.fit_plots_btn)
         layout.addLayout(heading)
@@ -173,10 +182,24 @@ class Dashboard(QMainWindow):
         self.metric_row.setLayout(metric_layout)
         layout.addWidget(self.metric_row)
         self.measurement_note = hint(
-            "Start a session to view readings. All four plots share the same time axis."
+            "Use the plot buttons to choose signals to compare. "
+            "Visible plots share a time axis."
         )
         layout.addWidget(self.measurement_note)
         self.plots = MeasurementPlots(self.config.hardware.mfc_controller.gas_names)
+        plot_buttons = QGridLayout()
+        for index, (key, plot) in enumerate(self.plots.plots.items()):
+            button = QToolButton()
+            button.setText(plot.property("title"))
+            button.setCheckable(True)
+            button.setChecked(True)
+            button.setToolTip("Show or hide this plot; recording continues.")
+            button.toggled.connect(
+                lambda checked, key=key: self.plots.toggle_plot(key, checked)
+            )
+            self.plots.visibility_buttons[key] = button
+            plot_buttons.addWidget(button, index // 2, index % 2)
+        layout.addLayout(plot_buttons)
         self.plot_scroll = QScrollArea()
         self.plot_scroll.setWidgetResizable(True)
         self.plot_scroll.setFrameShape(QFrame.Shape.NoFrame)

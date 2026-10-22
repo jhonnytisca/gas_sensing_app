@@ -111,7 +111,7 @@ def test_fixed_voltage_and_resistance_range_controls(qtbot, tmp_path):
     assert "automatically" in setup.capability_note.text()
     setup.instrument.setCurrentIndex(1)
     assert setup.bias.isHidden()
-    assert setup.auto_range.isHidden()
+    assert not setup.auto_range.isHidden()
     controller.close_log()
 
 
@@ -167,3 +167,33 @@ def test_recipe_preview_validates_before_enabling_start(qtbot, tmp_path):
     assert window.status_label.property("state") == "error"
     window.details_dialog.close()
     controller.close_log()
+
+
+def test_2700_live_range_and_plot_visibility(qtbot, tmp_path):
+    window, controller = make_window(qtbot, tmp_path)
+    setup = window.setup
+    setup.instrument.setCurrentIndex(1)
+    plots = window.plots
+    assert plots.plots["voltage_V"].isHidden()
+    assert plots.plots["current_A"].isHidden()
+    assert not plots.plots["resistance_ohm"].isHidden()
+    setup.interval.setValue(0.02)
+    controller.start("manual")
+    try:
+        qtbot.waitUntil(lambda: bool(plots.history), timeout=3000)
+        assert setup.auto_range.isEnabled()
+        assert not setup.instrument.isEnabled()
+        setup.auto_range.setChecked(False)
+        setup.manual_range.setValue(100000)
+        assert not setup.wires.isEnabled()
+        qtbot.mouseClick(setup.apply_range_btn, Qt.MouseButton.LeftButton)
+        qtbot.waitUntil(lambda: not controller.worker.engine.measurement.auto_range)
+        plots.visibility_buttons["flows"].click()
+        assert plots.plots["flows"].isHidden()
+        assert plots.plots["resistance_ohm"].getViewBox().linkedView(0) is None
+        plots.visibility_buttons["flows"].click()
+        assert not plots.plots["flows"].isHidden()
+    finally:
+        controller.stop()
+        qtbot.waitUntil(lambda: controller.worker is None, timeout=3000)
+        controller.close_log()

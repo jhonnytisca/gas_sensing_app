@@ -2,6 +2,7 @@
 
 import threading
 import time
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -33,6 +34,7 @@ class ExperimentEngine:
         self.cancel = threading.Event()
         self.lock = threading.Lock()
         self.pending = None
+        self.pending_range = None
         self.meter = self.gate = self.mfc = self.shutter = self.csv = None
         self.log_path = None
         self.failure_flows = {}
@@ -51,6 +53,16 @@ class ExperimentEngine:
 
     def stop(self):
         self.cancel.set()
+
+    def update_resistance_range(self, auto_range, manual_range):
+        settings = replace(
+            self.measurement, auto_range=auto_range, manual_range=manual_range
+        )
+        settings.validate()
+        if settings.instrument != "2700" or settings.mode != "resistance":
+            raise ValueError("Live range changes require 2700 resistance mode")
+        with self.lock:
+            self.pending_range = settings
 
     def report_error(self, text):
         self.errors.append(text)
@@ -190,6 +202,16 @@ class ExperimentEngine:
             )
 
     def acquire(self, stage_name):
+        with self.lock:
+            pending, self.pending_range = self.pending_range, None
+        if pending is not None:
+            self.operation = "changing 2700 resistance range"
+            self.meter.set_resistance_range(pending)
+            self.measurement = pending
+            self.on_status(
+                "Resistance range applied: "
+                + ("Auto" if pending.auto_range else f"{pending.manual_range:g} Ω")
+            )
         settings = self.measurement
         for ch in settings.channels:
             if self.cancel.is_set():
@@ -227,6 +249,15 @@ class ExperimentEngine:
                 "voltage_V": reading.voltage,
                 "current_A": reading.current,
                 "measurement_status": reading.status,
+                "resistance_range_mode": ("auto" if settings.auto_range else "manual")
+                if settings.mode != "voltage"
+                else None,
+                "resistance_range_requested_ohm": (
+                    settings.manual_range
+                    if settings.mode != "voltage" and not settings.auto_range
+                    else None
+                ),
+                "resistance_range_actual_ohm": reading.resistance_range,
                 "gate_setpoint_V": self.gate_target,
                 "gate_voltage_V": gate_v,
                 "gate_status": "disabled"

@@ -69,6 +69,40 @@ class RecordingFactory(HardwareFactory):
         return self.track("mfc", super().mfc())
 
 
+def test_live_range_applies_between_frames_and_is_saved(config):
+    engine = ExperimentEngine(
+        config, MeasurementSettings(instrument="2700", last_channel=2), GateSettings()
+    )
+    rows = []
+
+    def on_data(row):
+        rows.append(row)
+        if len(rows) == 1:
+            engine.update_resistance_range(False, 100000)
+
+    engine.on_data = on_data
+    try:
+        engine.prepare()
+        engine.acquire("test")
+        engine.acquire("test")
+        assert [r["resistance_range_mode"] for r in rows] == [
+            "auto",
+            "auto",
+            "manual",
+            "manual",
+        ]
+        assert rows[-1]["resistance_range_actual_ohm"] == 100000
+        with open(engine.log_path) as stream:
+            saved = list(csv.DictReader(stream))
+        assert saved[-1]["resistance_range_requested_ohm"] == "100000"
+        assert saved[-1]["resistance_range_actual_ohm"] == "100000"
+        engine.update_resistance_range(True, 100000)
+        engine.acquire("test")
+        assert rows[-1]["resistance_range_mode"] == "auto"
+    finally:
+        engine.shutdown()
+
+
 def test_sweep_csv_and_failure_shutdown(config):
     factory = RecordingFactory(config)
     gate = GateSettings(
