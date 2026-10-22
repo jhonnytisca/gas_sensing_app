@@ -16,6 +16,15 @@ class Stage:
     shutter_open: bool
     gate: object
 
+    @property
+    def estimated_duration(self):
+        settling = 0
+        if self.gate.enabled:
+            settling = self.gate.dwell_s * (
+                len(self.gate.points()) if self.gate.mode == "sweep" else 1
+            )
+        return max(self.duration, settling)
+
 
 def load_recipe(path, config, gate):
     with Path(path).open(encoding="utf-8") as stream:

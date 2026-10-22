@@ -160,6 +160,8 @@ def test_recipe_preview_validates_before_enabling_start(qtbot, tmp_path):
     assert window.start_recipe_btn.isEnabled()
     assert "Baseline" in window.setup.recipe_preview.text()
     assert "100 sccm" in window.setup.recipe_preview.text()
+    assert "Estimated total duration" in window.setup.recipe_preview.text()
+    assert "CH1" in window.setup.recipe_preview.text()
     recipe.write_text("steps: []")
     controller.load_recipe_file(str(recipe))
     assert not window.start_recipe_btn.isEnabled()
