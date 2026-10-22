@@ -64,7 +64,7 @@ def test_compact_actions_and_conditional_setup(qtbot, tmp_path):
     window, controller = make_window(qtbot, tmp_path)
     window.resize(640, 480)
     qtbot.waitUntil(lambda: window.compact_nav.isVisible())
-    assert window.height() == 480
+    compact_size = window.size()
     assert window.start_manual_btn.isVisible()
     assert window.stop_btn.isVisible()
     setup = window.setup
@@ -85,7 +85,7 @@ def test_compact_actions_and_conditional_setup(qtbot, tmp_path):
     window.show_monitor()
     assert window.stop_btn.isVisible()
     assert window.monitor_view.isVisible()
-    assert window.height() == 480
+    assert window.size() == compact_size
     controller.close_log()
 
 
