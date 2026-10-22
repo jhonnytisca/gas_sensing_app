@@ -33,6 +33,7 @@ class DashboardController:
         window.start_recipe_btn.clicked.connect(lambda: self.start("recipe"))
         window.start_manual_btn.clicked.connect(lambda: self.start("manual"))
         window.apply_manual_btn.clicked.connect(self.apply_manual)
+        window.setup.apply_range_btn.clicked.connect(self.apply_range)
         window.stop_btn.clicked.connect(self.stop)
         window.close_requested.connect(self.close_requested)
         window.destroyed.connect(self.close_log)
@@ -110,7 +111,7 @@ class DashboardController:
         self.worker = worker
         self.window.reset_readings()
         self.window.running = True
-        self.window.setup.settings_group.setEnabled(False)
+        self.window.setup.set_running(True)
         self.window.setup.gate_group.setEnabled(False)
         self.window.start_manual_btn.setEnabled(False)
         self.window.start_recipe_btn.setEnabled(False)
@@ -146,6 +147,17 @@ class DashboardController:
     def update_data(self, data):
         self.window.show_reading(data)
 
+    def apply_range(self):
+        if self.worker and self.window.running:
+            try:
+                self.worker.engine.update_resistance_range(
+                    self.window.setup.auto_range.isChecked(),
+                    self.window.setup.manual_range.value(),
+                )
+                self.status("Resistance range queued · applies before the next scan")
+            except Exception as exc:
+                self.error(str(exc))
+
     def status(self, text):
         self.window.status_label.setText(text)
         state = "complete" if text in ("Complete", "Stopped") else "ready"
@@ -173,7 +185,7 @@ class DashboardController:
     def finished(self):
         worker = self.worker
         self.window.running = False
-        self.window.setup.settings_group.setEnabled(True)
+        self.window.setup.set_running(False)
         self.window.setup.gate_group.setEnabled(True)
         self.window.start_manual_btn.setEnabled(True)
         self.window.start_recipe_btn.setEnabled(bool(self.recipe_path))

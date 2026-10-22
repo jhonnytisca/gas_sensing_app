@@ -60,6 +60,24 @@ changing voltage alone does not guarantee an on-range measurement.
 
 ### Multiple sensors: Keithley 2700 + 7706
 
+For resistance, choose **Resistance autorange** or enter **Resistance range (Ω)**.
+The 2700 supports decade ranges from 100 Ω to 100 MΩ; an intermediate request
+selects the smallest range that accommodates it. This setting applies to all
+selected channels. YAML uses `measurement.auto_range` and
+`measurement.manual_range` (ohms).
+
+During manual or recipe acquisition, these range controls remain editable.
+Click **Apply range to next scan** to queue a change. It takes effect before the
+next complete channel scan; it does not change halfway through a scan.
+Each CSV row records `resistance_range_mode`, `resistance_range_requested_ohm`
+(blank for Auto), and `resistance_range_actual_ohm` (2700 readback after the reading).
+The actual range can change between readings in Auto mode.
+
+In 2700 resistance mode, voltage and current plots are hidden. In voltage mode,
+resistance and current plots are hidden. The plot buttons above the graphs hide
+or restore any available plot, including gas flow, without stopping recording.
+Hidden plots retain their history and the visible plots keep linked time axes.
+
 Install the 7706 according to its manual and connect the 2700 to the computer.
 Identify whether the card is in slot 1 or slot 2 before configuring the scan.
 
@@ -328,7 +346,7 @@ test. Connections are opened only when starting the session.
 - **3 Gate (optional):** leave off, hold a voltage or configure a sweep.
 - **Start / Stop:** always accessible below the workspace.
 - **Live readings:** the most recent sensor's R, V and I; each card shows its unit.
-- **Four plots:** resistance, voltage, current and gases share the same time axis.
+- **Plot buttons:** show or hide available signals to compare them; visible plots share the same time axis.
 - **Fit plots:** restore the automatic view after zooming or panning.
 - **Dark / Light:** change the interface, curves, axes and legends together.
 - **Session details:** open connection, progress and error messages.

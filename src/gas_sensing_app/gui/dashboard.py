@@ -66,7 +66,15 @@ class Dashboard(QMainWindow):
         outer.addWidget(self.actions)
         outer.addWidget(self.build_details())
         self.setup.changed.connect(self.refresh_summary)
+        self.setup.changed.connect(self.update_plot_availability)
+        self.update_plot_availability()
         self.refresh_summary()
+
+    def update_plot_availability(self):
+        self.plots.set_measurement(
+            self.setup.instrument.currentData(),
+            self.setup.measurement_mode.currentData(),
+        )
 
     def build_header(self):
         header = QWidget()
@@ -144,10 +152,42 @@ class Dashboard(QMainWindow):
         self.readout = QLabel("Live readings · waiting for first sample")
         self.readout.setProperty("role", "sectionTitle")
         self.readout.setWordWrap(True)
+        self.readout.setSizePolicy(
+            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred
+        )
         heading.addWidget(self.readout, 1)
+        self.plots = MeasurementPlots(self.config.hardware.mfc_controller.gas_names)
+        plot_selector = QFrame()
+        plot_selector.setObjectName("plotSelector")
+        plot_buttons = QHBoxLayout(plot_selector)
+        plot_buttons.setContentsMargins(3, 3, 3, 3)
+        plot_buttons.setSpacing(2)
+        short_labels = {
+            "resistance_ohm": "R",
+            "voltage_V": "V",
+            "current_A": "I",
+            "flows": "Flow",
+        }
+        for key, plot in self.plots.plots.items():
+            title = plot.property("title")
+            button = QToolButton()
+            button.setText(short_labels[key])
+            button.setCheckable(True)
+            button.setChecked(True)
+            button.setAccessibleName(f"Show {title} plot")
+            button.setToolTip(
+                f"Show or hide the {title.lower()} plot; recording continues."
+            )
+            button.toggled.connect(
+                lambda checked, key=key: self.plots.toggle_plot(key, checked)
+            )
+            self.plots.visibility_buttons[key] = button
+            plot_buttons.addWidget(button)
+        heading.addWidget(plot_selector)
+        heading.addSpacing(8)
         self.fit_plots_btn = QPushButton("Fit plots")
         self.fit_plots_btn.setToolTip(
-            "Show the full recorded time range in all four plots."
+            "Show the full recorded time range in the plots."
         )
         heading.addWidget(self.fit_plots_btn)
         layout.addLayout(heading)
@@ -172,11 +212,6 @@ class Dashboard(QMainWindow):
         self.metric_row = QWidget()
         self.metric_row.setLayout(metric_layout)
         layout.addWidget(self.metric_row)
-        self.measurement_note = hint(
-            "Start a session to view readings. All four plots share the same time axis."
-        )
-        layout.addWidget(self.measurement_note)
-        self.plots = MeasurementPlots(self.config.hardware.mfc_controller.gas_names)
         self.plot_scroll = QScrollArea()
         self.plot_scroll.setWidgetResizable(True)
         self.plot_scroll.setFrameShape(QFrame.Shape.NoFrame)
@@ -270,9 +305,6 @@ class Dashboard(QMainWindow):
         ):
             self.metrics[key].setText(f"— {unit}")
         self.readout.setText("Live readings · waiting for first sample")
-        self.measurement_note.setText(
-            "The first sample will appear after instruments are ready."
-        )
         self.saved_file.setText(
             "Recording · CSV is written after every sensor reading."
         )
@@ -291,20 +323,6 @@ class Dashboard(QMainWindow):
         self.readout.setText(
             f"Latest sensor: {data['device']} · {data['elapsed_s']:.1f} s"
         )
-        if "current_unavailable" in data["measurement_status"]:
-            note = (
-                "The 7706 cannot read current directly. "
-                "A dash means no measurement, not zero."
-            )
-        elif "overrange" in data["measurement_status"]:
-            note = "A reading is outside the instrument range. See session details."
-        else:
-            note = (
-                "Simulated readings · no physical outputs"
-                if self.config.hardware.use_mock
-                else "Readings received from the instrument"
-            )
-        self.measurement_note.setText(note)
 
     def select_compact_view(self):
         if not hasattr(self, "setup_view"):
@@ -325,7 +343,6 @@ class Dashboard(QMainWindow):
             compact = self.width() < 980
             self.compact_nav.setVisible(compact)
             self.summary.setVisible(not compact)
-            self.measurement_note.setVisible(not compact)
             self.outer.setSpacing(8 if compact else 12)
             self.splitter.setOrientation(
                 Qt.Orientation.Vertical if compact else Qt.Orientation.Horizontal

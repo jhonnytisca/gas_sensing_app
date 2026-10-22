@@ -141,6 +141,8 @@ class SetupPanel(QTabWidget):
         self.auto_range.setChecked(cfg.auto_range)
         self.manual_range = number(cfg.manual_range, 1e-9, 1e12, 6)
         self.interval = number(cfg.interval_s, 0.01, 86400, 2)
+        self.apply_range_btn = QPushButton("Apply range to next scan")
+        self.apply_range_btn.setEnabled(False)
         for label, widget in (
             ("Connected setup", self.instrument),
             ("What to measure", self.measurement_mode),
@@ -158,6 +160,11 @@ class SetupPanel(QTabWidget):
             widget.setAccessibleName(label)
         self.interval.setToolTip(
             "Target interval between sensor scans. Instrument readout may take longer."
+        )
+        form.addRow(self.apply_range_btn)
+        self.manual_range.setToolTip(
+            "2700: 100 Ω to 100 MΩ. The instrument chooses the smallest decade "
+            "range that accommodates this value. Applies to all selected channels."
         )
         self.compliance.setToolTip(
             "Maximum allowed drain current. "
@@ -289,7 +296,9 @@ class SetupPanel(QTabWidget):
         voltage = self.measurement_mode.currentData() == "voltage"
         if mux and voltage:
             self.wires.setCurrentIndex(0)
-        self.wires.setEnabled(not (mux and voltage))
+        self.wires.setEnabled(
+            not getattr(self, "running", False) and not (mux and voltage)
+        )
         four = self.wires.currentData() == 4
         for widget in (self.slot, self.first_channel, self.last_channel):
             self.measurement_form.setRowVisible(widget, mux)
@@ -298,10 +307,11 @@ class SetupPanel(QTabWidget):
         bias = not mux and self.measurement_mode.currentData() == "constant_voltage"
         for widget in (self.bias, self.compliance):
             self.measurement_form.setRowVisible(widget, bias)
-        self.measurement_form.setRowVisible(self.auto_range, not mux)
+        self.measurement_form.setRowVisible(self.auto_range, not voltage)
         self.measurement_form.setRowVisible(
-            self.manual_range, not mux and not self.auto_range.isChecked()
+            self.manual_range, not voltage and not self.auto_range.isChecked()
         )
+        self.measurement_form.setRowVisible(self.apply_range_btn, mux and not voltage)
         self.capability_note.setText(
             "The 7706 cannot measure current directly. "
             "Empty readings mean unavailable, not zero. "
@@ -319,6 +329,30 @@ class SetupPanel(QTabWidget):
                 "voltage above to control the applied voltage."
             )
         )
+
+    def set_running(self, running):
+        self.running = running
+        for widget in (
+            self.instrument,
+            self.measurement_mode,
+            self.wires,
+            self.slot,
+            self.first_channel,
+            self.last_channel,
+            self.bias,
+            self.compliance,
+            self.interval,
+        ):
+            widget.setEnabled(not running)
+        live_range = (
+            self.instrument.currentData() == "2700"
+            and self.measurement_mode.currentData() == "resistance"
+        )
+        self.auto_range.setEnabled(not running or live_range)
+        self.manual_range.setEnabled(not running or live_range)
+        self.apply_range_btn.setEnabled(running and live_range)
+        if not running:
+            self.topology_changed()
 
     def gate_changed(self):
         enabled = self.gate_enabled.isChecked()

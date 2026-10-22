@@ -20,6 +20,9 @@ class MeasurementPlots(QSplitter):
         self.plots = {}
         self.curves = {}
         self.history = {}
+        self.visibility_buttons = {}
+        self.available = set()
+        self.selected = {}
         for key, title, unit in (
             ("resistance_ohm", "Resistance", "Ω"),
             ("voltage_V", "Voltage", "V"),
@@ -39,6 +42,7 @@ class MeasurementPlots(QSplitter):
             plot.addLegend(colCount=2, offset=(8, 8), labelTextSize="8pt")
             plot.setMinimumHeight(150)
             self.plots[key] = plot
+            self.selected[key] = True
             self.addWidget(plot)
         for key, plot in self.plots.items():
             if key != "flows":
@@ -55,6 +59,40 @@ class MeasurementPlots(QSplitter):
         self.history.clear()
         self.labels.clear()
         self.fit()
+
+    def set_measurement(self, instrument, mode):
+        self.available = set(self.plots)
+        if instrument == "2700":
+            self.available -= {
+                "current_A",
+                "voltage_V" if mode == "resistance" else "resistance_ohm",
+            }
+        self.update_visibility()
+
+    def toggle_plot(self, key, visible):
+        self.selected[key] = visible
+        self.update_visibility()
+
+    def update_visibility(self):
+        visible = [
+            key for key in self.plots if key in self.available and self.selected[key]
+        ]
+        for key, plot in self.plots.items():
+            plot.setVisible(key in visible)
+            if key in self.visibility_buttons:
+                self.visibility_buttons[key].setVisible(key in self.available)
+            bottom = bool(visible) and key == visible[-1]
+            plot.getAxis("bottom").setStyle(showValues=bottom)
+            plot.setLabel(
+                "bottom",
+                "Elapsed time" if bottom else "",
+                units="s" if bottom else None,
+            )
+            # Link only visible plots so hiding the flow plot does not freeze time axes.
+            plot.setXLink(
+                self.plots[visible[-1]] if visible and key != visible[-1] else None
+            )
+        self.setSizes([200 if key in visible else 0 for key in self.plots])
 
     def append(self, data):
         values = [

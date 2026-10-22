@@ -33,6 +33,9 @@ class MockKeithley2400:
 
 
 class MockKeithley2700(MockKeithley2400):
+    def set_resistance_range(self, settings):
+        self.settings = settings
+
     def read(self, channel):
         self.tick += 1
         if self.settings.mode == "voltage":
@@ -43,6 +46,16 @@ class MockKeithley2700(MockKeithley2400):
         return Reading(
             resistance=1000 + channel + self.tick * 0.1,
             status="simulated;current_unavailable_7706;voltage_not_measured",
+            resistance_range=next(
+                r
+                for r in (100, 1000, 10000, 100000, 1000000, 10000000, 100000000)
+                if r
+                >= (
+                    1000 + channel + self.tick * 0.1
+                    if self.settings.auto_range
+                    else self.settings.manual_range
+                )
+            ),
         )
 
 

@@ -48,9 +48,28 @@ class Keithley2700:
         self.instrument.write(":FORM:ELEM READ")
         self.instrument.write(":TRIG:COUN 1")
         self.instrument.write(":SAMP:COUN 1")
+        if settings.mode == "resistance":
+            self.set_resistance_range(settings)
+        self.check_error()
+
+    def check_error(self):
         response = self.instrument.query(":SYST:ERR?")
         if int(response.split(",", 1)[0]) != 0:
             raise RuntimeError(f"Keithley 2700: {response}")
+
+    def set_resistance_range(self, settings):
+        settings.validate()
+        function = "FRES" if settings.wire_mode == 4 else "RES"
+        command = (
+            f":SENS:{function}:RANG:AUTO ON"
+            if settings.auto_range
+            else f":SENS:{function}:RANG {settings.manual_range:g}"
+        )
+        channels = ",".join(map(str, settings.channels))
+        self.instrument.write(f"{command},(@{channels})")
+        self.instrument.write(command)
+        self.check_error()
+        self.settings = settings
 
     def read(self, channel):
         # ROUT:CLOS automatically pairs n and n+10 for FRES on the 7706.
@@ -61,7 +80,13 @@ class Keithley2700:
             status += ";overrange"
         if self.settings.mode == "voltage":
             return Reading(voltage=value, status=status + ";resistance_not_measured")
-        return Reading(resistance=value, status=status + ";voltage_not_measured")
+        function = "FRES" if self.settings.wire_mode == 4 else "RES"
+        actual_range = float(self.instrument.query(f":SENS:{function}:RANG?"))
+        return Reading(
+            resistance=value,
+            status=status + ";voltage_not_measured",
+            resistance_range=actual_range,
+        )
 
     def output_off(self):
         if self.instrument is not None:
