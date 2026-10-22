@@ -41,6 +41,7 @@ class ExperimentEngine:
         self.gate_target = None
         self.errors = []
         self.started = 0
+        self.operation = "preparing acquisition"
         self.active_gate = None
 
     def update_manual(self, shutter_open, targets):
@@ -80,7 +81,7 @@ class ExperimentEngine:
                         "MANUAL", self.measurement.interval_s, self.gate_settings
                     )
         except Exception as exc:
-            self.report_error(f"Acquisition failed: {exc}")
+            self.report_error(f"Acquisition failed ({self.operation}): {exc}")
         finally:
             self.shutdown()
         return self.log_path
@@ -105,14 +106,22 @@ class ExperimentEngine:
         )
         self.log_path = str(self.csv.path)
         # Persist the file header before any hardware is energized.
+        self.operation = "connecting/configuring ROD-4"
+        self.on_status(self.operation)
         self.mfc = self.factory.mfc()
+        self.operation = "connecting/configuring shutter"
         self.shutter = self.factory.shutter()
         if self.shutter:
             self.shutter.set_open(False)
+        self.operation = f"connecting Keithley {self.measurement.instrument}"
+        self.on_status(self.operation)
         self.meter = self.factory.meter(self.measurement)
         if any(g.enabled for g in gates):
+            self.operation = "connecting/configuring gate"
             self.gate = self.factory.gate()
             self.gate.output_off()
+        self.operation = f"configuring Keithley {self.measurement.instrument}"
+        self.on_status(self.operation)
         self.meter.configure(self.measurement)
         self.started = time.monotonic()
 
@@ -120,9 +129,11 @@ class ExperimentEngine:
         for ch, value in targets.items():
             if self.cancel.is_set():
                 return
+            self.operation = f"setting ROD-4 channel {ch} flow"
             self.mfc.set_flow(ch, value)
         self.targets = dict(targets)
         if self.shutter:
+            self.operation = "setting shutter position"
             self.shutter.set_open(shutter_open)
         self.shutter_open = shutter_open
 
@@ -183,15 +194,18 @@ class ExperimentEngine:
         for ch in settings.channels:
             if self.cancel.is_set():
                 return
+            self.operation = f"reading Keithley {settings.instrument}, channel {ch}"
             reading = self.meter.read(ch)
             timestamp = datetime.now(timezone.utc).isoformat(timespec="milliseconds")
             elapsed = time.monotonic() - self.started
+            self.operation = "reading ROD-4 flows"
             actual = {
                 key: finite(
                     self.mfc.get_actual_flow(key), f"MFC readback {key}", -float("inf")
                 )
                 for key in self.targets
             }
+            self.operation = "reading gate voltage"
             gate_v = (
                 self.gate.read_voltage()
                 if self.gate and self.gate_target is not None
@@ -225,6 +239,7 @@ class ExperimentEngine:
             for key, gas_name in self.config.hardware.mfc_controller.gas_names.items():
                 row[f"gas_{key}_{gas_name}_setpoint_sccm"] = self.targets[key]
                 row[f"gas_{key}_{gas_name}_actual_sccm"] = actual[key]
+            self.operation = "saving measurement CSV"
             self.csv.write(row)
             self.on_data(dict(row, flows=actual))
 

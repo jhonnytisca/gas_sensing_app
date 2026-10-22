@@ -38,6 +38,9 @@ def test_meter_serial_termination(monkeypatch, serial, driver_class):
     )
     manager = Mock()
     manager.open_resource.return_value = instrument
+    instrument.query.return_value = (
+        f"KEITHLEY INSTRUMENTS INC.,MODEL {driver_class.__name__[-4:]},123,1.0"
+    )
     monkeypatch.setattr(pyvisa, "ResourceManager", lambda: manager)
     driver = driver_class("ASRL1::INSTR" if serial else "GPIB0::24::INSTR")
     assert instrument.read_termination == ("\r" if serial else None)
@@ -46,6 +49,31 @@ def test_meter_serial_termination(monkeypatch, serial, driver_class):
         assert instrument.baud_rate == 9600
         assert instrument.flow_control == pyvisa.constants.ControlFlow.none
     driver.close()
+    driver.close()
+    instrument.close.assert_called_once()
+    manager.close.assert_not_called()
+
+
+@pytest.mark.parametrize("driver_class", [Keithley2400, Keithley2700])
+@pytest.mark.parametrize("failure", ["wrong_model", "timeout"])
+def test_connection_failure_closes_only_its_resource(
+    monkeypatch, driver_class, failure
+):
+    instrument = Mock(interface_type=pyvisa.constants.InterfaceType.asrl)
+    if failure == "timeout":
+        instrument.query.side_effect = pyvisa.errors.VisaIOError(
+            pyvisa.constants.StatusCode.error_timeout
+        )
+    else:
+        instrument.query.return_value = "KEITHLEY,MODEL 9999,123,1.0"
+    manager = Mock()
+    manager.open_resource.return_value = instrument
+    monkeypatch.setattr(pyvisa, "ResourceManager", lambda: manager)
+    with pytest.raises((RuntimeError, pyvisa.errors.VisaIOError)):
+        driver_class("ASRL1::INSTR")
+    instrument.write.assert_not_called()
+    instrument.close.assert_called_once()
+    manager.close.assert_not_called()
 
 
 def test_2400_simultaneous_reading_and_overrange():
@@ -84,6 +112,7 @@ def test_2700_four_two_wire_sensors(slot):
     driver.configure(settings)
     channels = ",".join(str(slot * 100 + ch) for ch in range(1, 5))
     assert f':SENS:FUNC "RES",(@{channels})' in driver.instrument.commands
+    assert ':SENS:FUNC "RES"' in driver.instrument.commands
     for channel in settings.channels:
         assert driver.read(channel).resistance == 1234.5
         assert driver.instrument.commands[-1] == f":ROUT:CLOS (@{channel})"
