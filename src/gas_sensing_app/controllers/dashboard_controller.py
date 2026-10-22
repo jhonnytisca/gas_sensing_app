@@ -80,14 +80,14 @@ class DashboardController:
         for index, stage in enumerate(stages, 1):
             total = sum(stage.flows.values())
             gate_text = stage.gate.mode if stage.gate.enabled else "off"
-            flow_details = ", ".join(
+            flow_details = "\n      ".join(
                 f"CH{ch} {self.config.hardware.mfc_controller.gas_names[ch]}: "
                 f"{value:g} sccm"
                 for ch, value in stage.flows.items()
             )
             lines.append(
                 f"{index}. {stage.name} · at least {stage.duration:g} s\n"
-                f"   {flow_details}\n"
+                f"      {flow_details}\n"
                 f"   Total flow {total:g} sccm · gate {gate_text}"
             )
         self.window.setup.recipe_preview.setText("\n\n".join(lines))
