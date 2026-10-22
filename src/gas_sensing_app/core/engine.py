@@ -45,6 +45,9 @@ class ExperimentEngine:
         self.started = 0
         self.operation = "preparing acquisition"
         self.active_gate = None
+        self.stage_index = 0
+        self.stage_started = 0
+        self.stage_durations = [s.estimated_duration for s in stages] if stages else []
 
     def update_manual(self, shutter_open, targets):
         targets = flows(targets, self.config.hardware.mfc_controller.range_sccm)
@@ -74,7 +77,7 @@ class ExperimentEngine:
                 return
             self.prepare()
             if self.stages:
-                for stage in self.stages:
+                for self.stage_index, stage in enumerate(self.stages):
                     if self.cancel.is_set():
                         break
                     self.apply_flows(stage.flows, stage.shutter_open)
@@ -153,6 +156,7 @@ class ExperimentEngine:
         if self.cancel.is_set():
             return
         start = time.monotonic()
+        self.stage_started = start
         gate_changed = gate != self.active_gate
         if self.gate and gate_changed:
             self.gate.output_off()
@@ -272,7 +276,20 @@ class ExperimentEngine:
                 row[f"gas_{key}_{gas_name}_actual_sccm"] = actual[key]
             self.operation = "saving measurement CSV"
             self.csv.write(row)
-            self.on_data(dict(row, flows=actual))
+            data = dict(row, flows=actual)
+            if self.stages:
+                remaining = max(
+                    0,
+                    self.stage_durations[self.stage_index]
+                    - (time.monotonic() - self.stage_started),
+                ) + sum(self.stage_durations[self.stage_index + 1 :])
+                data.update(
+                    recipe_step=self.stage_index + 1,
+                    recipe_steps=len(self.stages),
+                    recipe_total_s=sum(self.stage_durations),
+                    recipe_remaining_s=remaining,
+                )
+            self.on_data(data)
 
     def shutdown(self):
         def attempt(label, operation):
