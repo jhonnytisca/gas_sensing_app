@@ -186,9 +186,7 @@ class Dashboard(QMainWindow):
         heading.addWidget(plot_selector)
         heading.addSpacing(8)
         self.fit_plots_btn = QPushButton("Fit plots")
-        self.fit_plots_btn.setToolTip(
-            "Show the full recorded time range in the plots."
-        )
+        self.fit_plots_btn.setToolTip("Show the full recorded time range in the plots.")
         heading.addWidget(self.fit_plots_btn)
         layout.addLayout(heading)
         metric_layout = QHBoxLayout()
@@ -320,9 +318,20 @@ class Dashboard(QMainWindow):
             self.metrics[key].setText(
                 f"{value:.4g} {unit}" if value is not None else f"— {unit}"
             )
-        self.readout.setText(
-            f"Latest sensor: {data['device']} · {data['elapsed_s']:.1f} s"
-        )
+        text = f"Latest sensor: {data['device']} · {data['elapsed_s']:.1f} s"
+        if "recipe_step" in data:
+            text += (
+                f"\nStep {data['recipe_step']}/{data['recipe_steps']}: {data['step']}"
+                f" · total ≈ {data['recipe_total_s'] / 60:.2f} min"
+                f" · remaining ≈ {data['recipe_remaining_s'] / 60:.2f} min"
+            )
+            details = []
+            for ch, name in self.config.hardware.mfc_controller.gas_names.items():
+                target = data[f"gas_{ch}_{name}_setpoint_sccm"]
+                actual = data["flows"][ch]
+                details.append(f"CH{ch} {name}: {target:g} / {actual:g}")
+            text += "\nFlow set / actual (sccm): " + "; ".join(details)
+        self.readout.setText(text)
 
     def select_compact_view(self):
         if not hasattr(self, "setup_view"):

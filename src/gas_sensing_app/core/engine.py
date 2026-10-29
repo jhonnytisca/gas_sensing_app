@@ -299,13 +299,7 @@ class ExperimentEngine:
                 row[f"gas_{key}_{gas_name}_actual_sccm"] = actual[key]
             self.operation = "saving measurement CSV"
             self.csv.write(row)
-            # GUI identifiers are separate from the persisted column names.
-            data = dict(
-                row,
-                flows=actual,
-                step=stage_name,
-                device=f"{ch}+{sense}" if sense else row["sensor_id"],
-            )
+            data = dict(row, flows=actual)
             if self.stages:
                 remaining = max(
                     0,

@@ -126,6 +126,10 @@ def test_sweep_csv_and_failure_shutdown(config):
     engine.run()
     assert not engine.errors
     assert [row["gate_setpoint_V"] for row in observed] == [0, 0.1, 0.2]
+    assert all(row["recipe_step"] == 1 for row in observed)
+    assert all(row["recipe_steps"] == 1 for row in observed)
+    assert observed[0]["recipe_total_s"] == pytest.approx(0.03)
+    assert observed[-1]["recipe_remaining_s"] == 0
     assert all(row["flows"][1] == 90 for row in observed)
     assert all(row["current_A"] > 0 for row in observed)
     assert not factory.devices["meter"].enabled

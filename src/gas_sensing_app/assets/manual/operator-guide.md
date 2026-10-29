@@ -348,6 +348,12 @@ test. Connections are opened only when starting the session.
 - **Live readings:** the most recent sensor's R, V and I; each card shows its unit.
 - **Plot buttons:** show or hide available signals to compare them; visible plots share the same time axis.
 - **Fit plots:** restore the automatic view after zooming or panning.
+- **Recipe progress:** beside the latest sensor and elapsed time, see the current
+  step, estimated total duration and remaining minutes, plus each gas channel's
+  setpoint and measured flow. The recipe preview also lists individual gas
+  setpoints. Estimates include configured stage durations and gate dwell times;
+  instrument communication and reading times can extend execution. Progress
+  refreshes with existing readings and adds no instrument queries or waits.
 - **Dark / Light:** change the interface, curves, axes and legends together.
 - **Session details:** open connection, progress and error messages.
 - **Operator guide:** open this manual.
