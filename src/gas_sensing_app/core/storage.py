@@ -1,6 +1,7 @@
 """Append-only experiment storage, committed after every sensor reading."""
 
 import csv
+import json
 import os
 from datetime import datetime, timezone
 from pathlib import Path
@@ -16,12 +17,9 @@ class MeasurementCSV:
         self.fields = [
             "timestamp",
             "elapsed_s",
-            "step",
-            "device",
-            "slot",
-            "channel",
+            "recipe_step",
+            "sensor_id",
             "sense_channel",
-            "wire_mode",
             "resistance_ohm",
             "voltage_V",
             "current_A",
@@ -53,6 +51,20 @@ class MeasurementCSV:
     def sync(self):
         self.file.flush()
         os.fsync(self.file.fileno())
+
+    def write_metadata(self, metadata):
+        self.metadata_path = self.path.with_suffix(".metadata.json")
+        with self.metadata_path.open("x", encoding="utf-8") as stream:
+            json.dump(
+                dict(schema_version=2, data_file=self.path.name, **metadata),
+                stream,
+                indent=2,
+                ensure_ascii=False,
+                allow_nan=False,
+            )
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
 
     def write(self, row):
         self.writer.writerow(row)

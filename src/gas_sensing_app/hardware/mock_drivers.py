@@ -41,11 +41,11 @@ class MockKeithley2700(MockKeithley2400):
         if self.settings.mode == "voltage":
             return Reading(
                 voltage=0.1 + channel / 10000,
-                status="simulated;current_unavailable_7706;resistance_not_measured",
+                status="simulated",
             )
         return Reading(
             resistance=1000 + channel + self.tick * 0.1,
-            status="simulated;current_unavailable_7706;voltage_not_measured",
+            status="simulated",
             resistance_range=next(
                 r
                 for r in (100, 1000, 10000, 100000, 1000000, 10000000, 100000000)
