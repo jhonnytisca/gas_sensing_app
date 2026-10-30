@@ -4,6 +4,7 @@ QMainWindow, QMainWindow > QWidget { background: @BG@; }
 QLabel { background: transparent; border: none; }
 QLabel[role="muted"] { color: @MUTED@; }
 QLabel[role="sectionTitle"] { font-size: 15px; font-weight: 600; }
+QLabel[role="compactInfo"] { font-size: 11px; font-weight: 400; }
 QLabel#pageTitle { font-size: 22px; font-weight: 700; }
 QLabel#modeBadge { background: @SELECTED@; color: @TEXT@; border-radius: 5px; padding: 5px 8px; font-size: 10px; font-weight: 700; }
 QLabel#statusBanner { background: @INFO@; border: 1px solid @BORDER@; border-radius: 7px; padding: 9px 12px; }
@@ -37,6 +38,12 @@ QFrame#plotSelector { background: @RAISED@; border: 1px solid @BORDER@; border-r
 QFrame#plotSelector QToolButton { padding: 6px 9px; border: 1px solid transparent; color: @MUTED@; }
 QFrame#plotSelector QToolButton:checked { background: @SELECTED@; border-color: @FOCUS@; color: @TEXT@; }
 QFrame#plotSelector QToolButton:focus { border: 2px solid @FOCUS@; }
+QFrame#plotSelector QToolButton:disabled { background: @DISABLED_BG@; color: @DISABLED@; border-color: transparent; }
+QListWidget { background: @SURFACE@; color: @TEXT@; border: 1px solid @BORDER@; border-radius: 6px; padding: 3px; }
+QListWidget::item { padding: 3px; }
+QListWidget::item:selected { background: @SELECTED@; color: @TEXT@; }
+QListWidget::indicator { width: 16px; height: 16px; border: 1px solid @BORDER@; border-radius: 3px; background: @SURFACE@; }
+QListWidget::indicator:checked { background: @SELECTED@; border-color: @FOCUS@; image: url("@CHECK_ICON@"); }
 QComboBox, QSpinBox, QDoubleSpinBox, QLineEdit { background: @SURFACE@; color: @TEXT@; border: 1px solid @BORDER@; border-radius: 5px; min-height: 22px; padding: 5px 8px; selection-background-color: @ACCENT@; selection-color: #ffffff; }
 QComboBox { padding-right: 28px; }
 QComboBox:hover, QSpinBox:hover, QDoubleSpinBox:hover { border-color: @FOCUS@; }

@@ -21,6 +21,7 @@ dependencies = [
     "PyQt6>=6.4.0",
     "PyYAML>=6.0",
     "pyqtgraph>=0.13.0",
+    "numpy",
     "pyvisa",
     "pyserial",
     "pymeasure",
@@ -33,6 +34,7 @@ dependencies = [
 [project.scripts]
 sensor = "gas_sensing_app.main:main"
 find-ports = "gas_sensing_app.find_ports:main"
+preview-results = "gas_sensing_app.preview_results:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
