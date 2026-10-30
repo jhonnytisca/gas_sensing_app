@@ -1,6 +1,7 @@
 """Independent, read-only results browser. File parsing runs off the GUI thread."""
 
 import json
+from html import escape
 from pathlib import Path
 
 import numpy as np
@@ -34,6 +35,7 @@ from gas_sensing_app.gui.styles.theme_manager import (
     get_pyqtgraph_config,
     load_theme,
 )
+from gas_sensing_app.gui.widgets.legend import ThickLineSample
 from gas_sensing_app.gui.widgets.theme_selector import ThemeSelector
 from gas_sensing_app.results import (
     ELECTRICAL,
@@ -184,7 +186,7 @@ class ResultsPreviewer(QMainWindow):
         main = QVBoxLayout(content)
         main.setContentsMargins(8, 0, 0, 0)
         self.file_title = QLabel("Select a measurement")
-        self.file_title.setProperty("role", "sectionTitle")
+        self.file_title.setProperty("role", "compactInfo")
         self.file_title.setWordWrap(True)
         main.addWidget(self.file_title)
         controls = QHBoxLayout()
@@ -240,9 +242,10 @@ class ResultsPreviewer(QMainWindow):
             "Wheel to zoom · drag to pan · right-click for axis controls"
         )
         self.view_note.setWordWrap(True)
-        main.addWidget(self.view_note)
+        self.view_note.hide()
         self.status = QLabel("Read-only preview · no instrument connections")
         self.status.setWordWrap(True)
+        self.status.setProperty("role", "compactInfo")
         main.addWidget(self.status)
         split.addWidget(content)
         split.setSizes([320, 1000])
@@ -421,30 +424,20 @@ class ResultsPreviewer(QMainWindow):
         sensors = self.checked_items(self.sensors)
         sensor_mask = np.isin(result.sensors, sensors)
         time_min = result.time_s / 60
-        correction = self.correction.isChecked()
-        self.canvas.addLabel(result.path.name, col=0, row=0, color=self.foreground)
-        if correction:
-            factors = ", ".join(
-                f"CH{ch} ÷{spin.value():g}" for ch, spin in self.divisors.items()
-            )
-            self.canvas.addLabel(
-                f"Preview correction ON: {factors}", col=0, row=1, color=self.foreground
-            )
-        else:
-            self.canvas.addLabel(
-                "Original values · correction OFF", col=0, row=1, color=self.foreground
-            )
-        self.export_note = self.canvas.addLabel("", row=2, col=0, color=self.foreground)
+        self.export_note = self.canvas.addLabel(
+            "", row=0, col=0, color=self.foreground, size="8pt"
+        )
         for key, button in self.signal_buttons.items():
             if not (button.isChecked() and button.isEnabled()):
                 continue
             title, unit = ELECTRICAL.get(key, ("Gas flows", "sccm"))
-            plot = self.canvas.addPlot(row=3 + len(self.plots), col=0, title=title)
+            plot = self.canvas.addPlot(row=1 + len(self.plots), col=0)
+            plot.setTitle(title, size="10pt")
             plot.setLabel("left", title, units=unit)
             plot.getAxis("left").setWidth(85)
             plot.setLabel("bottom", "Elapsed time", units="min")
             plot.showGrid(x=True, y=True, alpha=0.2)
-            plot.addLegend(colCount=2, labelTextSize="9pt")
+            plot.addLegend(colCount=2, labelTextSize="8pt", sampleType=ThickLineSample)
             plot.setClipToView(True)
             plot.setDownsampling(auto=True, mode="peak")
             plot.setMenuEnabled(True)
@@ -547,27 +540,33 @@ class ResultsPreviewer(QMainWindow):
             "Wheel: zoom; drag: pan."
         )
         if self.export_note is not None:
+            correction = "Correction OFF"
+            if self.correction.isChecked():
+                correction = "Flow correction: " + ", ".join(
+                    f"CH{ch}÷{spin.value():g}"
+                    for ch, spin in self.divisors.items()
+                    if ch in self.checked_items(self.gases)
+                )
+            self.plot_note = f"{correction} · {mode} · {outside} off-scale"
             self.export_note.setText(
-                f"{mode} · {outside} values outside Y view · data unchanged",
+                self.plot_note,
                 color=self.foreground,
+                size="8pt",
             )
+            self.canvas.setToolTip(self.view_note.text())
         self.summary()
 
     def summary(self):
         result = self.result
         scans = f" · {len(result.scan_ids)} scan IDs" if result.scan_ids else ""
-        correction = (
-            "Legacy correction ON (reported flows only)"
-            if self.correction.isChecked()
-            else "Original file values"
-        )
         self.status.setText(
-            f"{len(result.time_s):,} rows · {len(result.sensor_ids)} sensors{scans} "
-            f"· {correction}\n"
-            + (
-                " · ".join(result.warnings)
-                or "Read-only snapshot · Reload file to read newly saved measurements."
-            )
+            f"{len(result.time_s):,} rows · "
+            f"{len(self.checked_items(self.sensors))}/{len(result.sensor_ids)} sensors"
+            f"{scans} · Read-only"
+            + (f" · {len(result.warnings)} notices (hover)" if result.warnings else "")
+        )
+        self.status.setToolTip(
+            "\n".join(result.warnings) or "Reload file to update the snapshot."
         )
 
     def change_theme(self):
@@ -612,9 +611,18 @@ class ResultsPreviewer(QMainWindow):
                 QMessageBox.warning(self, "Export failed", str(exc))
 
     def export_png(self, path):
-        exporter = ImageExporter(self.canvas.scene())
-        exporter.parameters()["width"] = 1800
-        exporter.export(str(path))
+        # Include the filename in exports without duplicating it above live plots.
+        if self.export_note is not None:
+            self.export_note.setText(
+                f"{escape(self.result.path.name)}<br>{self.plot_note}", size="8pt"
+            )
+        try:
+            exporter = ImageExporter(self.canvas.scene())
+            exporter.parameters()["width"] = 1800
+            exporter.export(str(path))
+        finally:
+            if self.export_note is not None:
+                self.export_note.setText(self.plot_note, size="8pt")
 
     def closeEvent(self, event):
         self.load_token += 1

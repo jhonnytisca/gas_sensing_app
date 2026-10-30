@@ -167,7 +167,7 @@ class Dashboard(QMainWindow):
         layout.setContentsMargins(0, 0, 0, 0)
         heading = QHBoxLayout()
         self.readout = QLabel("Live readings · waiting for first sample")
-        self.readout.setProperty("role", "sectionTitle")
+        self.readout.setProperty("role", "compactInfo")
         self.readout.setWordWrap(True)
         self.readout.setSizePolicy(
             QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred
@@ -335,7 +335,7 @@ class Dashboard(QMainWindow):
             self.metrics[key].setText(
                 f"{value:.4g} {unit}" if value is not None else f"— {unit}"
             )
-        text = f"Latest sensor: {data['device']} · {data['elapsed_s']:.1f} s"
+        text = f"Sensor {data['device']} · {data['elapsed_s']:.1f} s"
         if "recipe_steps" in data:
             text += (
                 f"\nStep {data['recipe_step']}/{data['recipe_steps']}: {data['step']}"

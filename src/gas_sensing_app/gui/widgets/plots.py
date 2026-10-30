@@ -9,6 +9,7 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QSplitter
 
 from gas_sensing_app.gui.styles.theme_manager import DEFAULT_THEME, update_plot_theme
+from gas_sensing_app.gui.widgets.legend import ThickLineSample
 
 
 class MeasurementPlots(QSplitter):
@@ -39,7 +40,12 @@ class MeasurementPlots(QSplitter):
             else:
                 plot.getAxis("bottom").setStyle(showValues=False)
             plot.showGrid(x=True, y=True, alpha=0.2)
-            plot.addLegend(colCount=2, offset=(8, 8), labelTextSize="8pt")
+            plot.addLegend(
+                colCount=2,
+                offset=(8, 8),
+                labelTextSize="8pt",
+                sampleType=ThickLineSample,
+            )
             plot.setMinimumHeight(150)
             self.plots[key] = plot
             self.selected[key] = True

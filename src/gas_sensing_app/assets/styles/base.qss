@@ -4,6 +4,7 @@ QMainWindow, QMainWindow > QWidget { background: @BG@; }
 QLabel { background: transparent; border: none; }
 QLabel[role="muted"] { color: @MUTED@; }
 QLabel[role="sectionTitle"] { font-size: 15px; font-weight: 600; }
+QLabel[role="compactInfo"] { font-size: 11px; font-weight: 400; }
 QLabel#pageTitle { font-size: 22px; font-weight: 700; }
 QLabel#modeBadge { background: @SELECTED@; color: @TEXT@; border-radius: 5px; padding: 5px 8px; font-size: 10px; font-weight: 700; }
 QLabel#statusBanner { background: @INFO@; border: 1px solid @BORDER@; border-radius: 7px; padding: 9px 12px; }
