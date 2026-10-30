@@ -481,6 +481,30 @@ For a constant gate, choose **Hold one voltage** instead.
 
 ## 9. Read and analyze the results
 
+Open **Results** beside the theme selector to launch a separate previewer while
+acquisition continues. You can also launch it with `uv run preview-results`.
+It always starts in the configured experiment-save folder. Select a CSV from
+the list, or use **Open folder** / **Open files**. The default **Replace displayed
+files** replaces only the browser list; **Add to displayed files** appends to it.
+Neither changes any file on disk. **Include subfolders** is optional.
+
+Select sensors and gas channels, toggle R/V/I/Flow, and overlay dashed setpoints
+with solid reported flows. Unmeasured electrical values stay absent while their
+row's flow values remain available. **Spike-resistant view** fits the Y axis to
+each curve's 1st–99th percentiles within the visible time window, with padding;
+gas setpoints and short series retain their full range. This changes only the
+view, never data. The footer reports values outside the view. Use **Full view**
+for all extrema, the wheel to zoom and drag to pan. **Fit view** restores the
+whole time interval. PNG export captures the current visible plots and ranges.
+
+**Legacy flow correction** is optional and off by default. For older files with
+double scaling, set the appropriate divisor for each reported gas flow (the old
+full-scale range divided by 100; historically 10, 10, 2, 2). It does not change
+setpoints or source files. Leave it off for files saved by the corrected driver.
+**Session details** displays matching metadata; **Reload file** refreshes the
+read-only snapshot. The Linux Mint launcher is `preview-results.desktop` in the
+project root; see the README for installation and path settings.
+
 The CSV contains one row per sensor reading, so one scan of four sensors normally
 produces four rows sharing one `scan_id`. IDs start at 1 per session and increase
 across recipe steps; interrupted scans may be incomplete. Use this column to

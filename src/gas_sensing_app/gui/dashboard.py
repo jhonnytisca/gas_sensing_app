@@ -95,8 +95,25 @@ class Dashboard(QMainWindow):
         layout.addWidget(mode)
         layout.addStretch()
         self.theme_selector = ThemeSelector()
+        self.preview_results_btn = QToolButton()
+        self.preview_results_btn.setText("Results")
+        self.preview_results_btn.setToolTip(
+            "Open results previewer in a separate process"
+        )
+        self.preview_results_btn.clicked.connect(self.open_results_previewer)
+        layout.addWidget(self.preview_results_btn)
         layout.addWidget(self.theme_selector)
         return header
+
+    def open_results_previewer(self):
+        from PyQt6.QtWidgets import QMessageBox
+
+        from gas_sensing_app.preview_results import launch_previewer
+
+        try:
+            launch_previewer(self.config)
+        except Exception as exc:
+            QMessageBox.warning(self, "Results previewer", str(exc))
 
     def build_setup(self):
         panel = QFrame()

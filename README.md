@@ -101,6 +101,55 @@ settings per stage. Omitted gas channels have a zero flow setpoint.
 
 ## CSV output and plots
 
+### Independent results previewer
+
+Click **Results** beside the main window's theme selector, or run:
+
+```bash
+uv run preview-results
+uv run preview-results --config /absolute/path/to/config.yaml
+uv run preview-results --folder /absolute/path/to/measurements
+```
+
+The previewer is a separate process with no instrument connections. On each
+launch it starts in the configured `logging.data_log.folder` (relative to the
+configuration file), rather than remembering the last browsed folder. An explicit
+`--folder` overrides that startup default. Missing configuration defaults to `data/`.
+
+- **Open folder / Open files:** replace the displayed CSV list by default. Choose
+  **Add to displayed files** to append instead; duplicates are ignored. These
+  options never replace files on disk. Subfolders are optional. Select one file
+  at a time; use the list/arrow keys to move between measurements.
+- **Sensors / Gas channels:** choose which curves to compare. A sensor without
+  valid resistance still retains its associated gas readings.
+- **R / V / I / Flow:** toggle plots; unavailable signals are disabled. Gas
+  setpoints are dashed and reported flows are solid. Time is shown in minutes.
+- **Spike-resistant view** is on by default. It fits Y axes using each curve's
+  1st–99th percentiles, with padding, within the visible time window. It does not
+  delete or smooth samples. Short series and gas setpoints retain full extrema;
+  the footer reports how many plotted values are outside the current Y view.
+  **Full view** includes all extrema. Wheel to zoom, drag to pan, or use the
+  right-click axis controls; **Fit view** restores the full time interval.
+- **Legacy flow correction** is off for every newly loaded file. Enable only for
+  older double-scaled files. Editable per-channel divisors apply to reported
+  flows, never setpoints. Defaults come from metadata full scales divided by 100,
+  or historical CH1/2 = 10 and CH3/4 = 2 when metadata is missing. Confirm these
+  against the settings used for that experiment. New corrected CSVs need no
+  correction. Both plots and PNG exports label the correction state.
+- **Session details** shows matching `.metadata.json` when available. Old CSVs
+  (`device`, `step`) and new CSVs (`sensor_id`, `recipe_step`) are supported.
+- **Export PNG** saves the current visible plots and zoom. **Reload file** refreshes
+  a snapshot, including a file still being recorded; source data is never edited.
+
+For Linux Mint, [preview-results.desktop](preview-results.desktop) is a launcher
+configured for this checkout and its `config.yaml`. Copy it to your Desktop and
+allow launching when prompted, or to `~/.local/share/applications/` for the menu.
+If moving the project to another computer, update its `Exec` and `Path` entries
+to that computer's `uv`, project, and configuration paths. The command is
+registered in `[project.scripts]` in `pyproject.toml`.
+
+### Recorded data
+
 Each sensor reading produces one UTF-8 row with comma separators and a decimal
 point. The row is written, then `flush()` and `fsync()` are called before notifying
 the interface. Filenames include microseconds and a unique identifier; files are
