@@ -113,7 +113,7 @@ flow before editing the configuration.
 The default names are dry air, wet air, analyte 1 and analyte 2. These are labels,
 not automatic gas identification. If the physical gas assignment differs, update
 `gas_names`. Flow values in the interface and CSV are in **sccm**. The driver
-converts ROD-4 percentage readings using each channel's configured range.
+saves ROD-4 readbacks directly in sccm; setpoint commands use percentage of range.
 
 ### Shutter, if installed
 
@@ -482,17 +482,30 @@ For a constant gate, choose **Hold one voltage** instead.
 ## 9. Read and analyze the results
 
 The CSV contains one row per sensor reading, so one scan of four sensors normally
-produces four rows. `timestamp` is UTC in ISO 8601 format; `elapsed_s` uses a
+produces four rows sharing one `scan_id`. IDs start at 1 per session and increase
+across recipe steps; interrupted scans may be incomplete. Use this column to
+group sensor rounds in Origin. `timestamp` is UTC in ISO 8601 format; `elapsed_s` uses a
 monotonic clock and is the shared plotting time. Channels are read sequentially,
 not simultaneously. Gas and gate readbacks are queried after the electrical reading.
 
-Use `device` to group sensors and `step` to compare gas stages. Electrical units
+Each new CSV has a matching `.metadata.json` file with the identical filename
+stem. Keep these together. Metadata contains initial measurement and hardware
+settings, sensor/channel mappings (including slot and wiring), the recipe, gate
+settings, shutdown flows and flow-conversion details. Live range settings and
+readbacks remain in each CSV row. Earlier CSV files are not rewritten.
+
+Use `sensor_id` to group sensors and `recipe_step` to compare gas stages. Electrical units
 are explicit: `resistance_ohm`, `voltage_V`, and `current_A`. The gate has separate
 setpoint/readback columns. Each gas has both requested and actual flow columns
 in sccm. Check `measurement_status` and `gate_status` when a value is empty.
 
 A dash in the interface or an empty CSV field means unavailable/out of range,
-not zero. Four-terminal 7706 readings identify both channels, such as `101+111`.
+not zero. Four-terminal 7706 readings use `sensor_id=101` and `sense_channel=111`.
+The sense channel is empty when not applicable. Disabled shutter and gate fields
+are empty; an enabled closed shutter is `0`, an open shutter is `1`. All configured
+gas channels remain in the CSV. Normal 2700 status is `ok`, or `overrange` for an
+invalid reading; simulations use `simulated`. Unmeasured voltage/current remain
+empty without repeating instrument capability descriptions in the status.
 The latest-reading cards show the last sensor received; the plots retain each
 sensor's own curve. Gate voltage is not the voltage measured across the sensor.
 

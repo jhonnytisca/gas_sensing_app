@@ -1,4 +1,5 @@
 import csv
+import json
 from dataclasses import replace
 from pathlib import Path
 
@@ -85,6 +86,7 @@ def test_live_range_applies_between_frames_and_is_saved(config):
         engine.prepare()
         engine.acquire("test")
         engine.acquire("test")
+        assert [r["scan_id"] for r in rows] == [1, 1, 2, 2]
         assert [r["resistance_range_mode"] for r in rows] == [
             "auto",
             "auto",
@@ -95,6 +97,7 @@ def test_live_range_applies_between_frames_and_is_saved(config):
         with open(engine.log_path) as stream:
             saved = list(csv.DictReader(stream))
         assert saved[-1]["resistance_range_requested_ohm"] == "100000"
+        assert [r["scan_id"] for r in saved] == ["1", "1", "2", "2"]
         assert saved[-1]["resistance_range_actual_ohm"] == "100000"
         engine.update_resistance_range(True, 100000)
         engine.acquire("test")
@@ -177,8 +180,43 @@ def test_2700_four_wire_identity_and_missing_current(config):
     assert not engine.errors
     with open(engine.log_path) as stream:
         rows = list(csv.DictReader(stream))
-    assert [row["device"] for row in rows] == ["201+211", "202+212"]
+    assert [row["sensor_id"] for row in rows] == ["201", "202"]
+    assert [row["sense_channel"] for row in rows] == ["211", "212"]
+    assert all(row["recipe_step"] == "scan" for row in rows)
+    assert all(row["gate_status"] == "" for row in rows)
+    assert not {"device", "slot", "channel", "wire_mode", "step"} & rows[0].keys()
+    metadata = json.loads(
+        Path(engine.log_path).with_suffix(".metadata.json").read_text()
+    )
+    assert metadata["data_file"] == Path(engine.log_path).name
+    assert metadata["measurement_initial"]["wire_mode"] == 4
+    assert metadata["sensor_mapping"][0]["slot"] == 2
+    assert metadata["recipe"][0]["name"] == "scan"
     assert all(row["current_A"] == "" and row["voltage_V"] == "" for row in rows)
+
+
+def test_disabled_fields_and_all_gases_preserved(config):
+    config.hardware.shutter.enabled = False
+    engine = ExperimentEngine(config, MeasurementSettings(), GateSettings())
+    engine.on_data = lambda row: engine.stop()
+    engine.run()
+    assert not engine.errors
+    with open(engine.log_path) as stream:
+        row = next(csv.DictReader(stream))
+    for field in (
+        "shutter_open",
+        "gate_setpoint_V",
+        "gate_voltage_V",
+        "gate_status",
+        "sense_channel",
+    ):
+        assert row[field] == ""
+    assert row["sensor_id"] == "single"
+    assert row["recipe_step"] == "MANUAL"
+    assert row["measurement_status"] == "simulated"
+    for ch, name in config.hardware.mfc_controller.gas_names.items():
+        assert f"gas_{ch}_{name}_setpoint_sccm" in row
+        assert f"gas_{ch}_{name}_actual_sccm" in row
 
 
 def test_stop_during_sweep_preserves_rows_and_applies_purge(config):

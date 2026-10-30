@@ -2,7 +2,7 @@
 
 import threading
 import time
-from dataclasses import replace
+from dataclasses import asdict, replace
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -43,6 +43,7 @@ class ExperimentEngine:
         self.gate_target = None
         self.errors = []
         self.started = 0
+        self.scan_id = 0
         self.operation = "preparing acquisition"
         self.active_gate = None
         self.stage_index = 0
@@ -120,6 +121,32 @@ class ExperimentEngine:
             self.config.hardware.mfc_controller.gas_names,
         )
         self.log_path = str(self.csv.path)
+        self.csv.write_metadata(
+            {
+                "created_at_utc": datetime.now(timezone.utc).isoformat(),
+                "elapsed_time_origin": "instrument preparation completed",
+                "measurement_initial": asdict(self.measurement),
+                "hardware": asdict(self.config.hardware),
+                "gate_initial": asdict(self.gate_settings),
+                "recipe": [asdict(stage) for stage in self.stages]
+                if self.stages
+                else None,
+                "shutdown_flows_sccm": self.failure_flows,
+                "sensor_mapping": [
+                    {
+                        "sensor_id": str(ch) if ch is not None else "single",
+                        "channel": ch,
+                        "slot": self.measurement.slot if ch is not None else None,
+                        "wire_mode": self.measurement.wire_mode,
+                    }
+                    for ch in self.measurement.channels
+                ],
+                "flow_readback": "controller readback in sccm; no extra scaling",
+                "empty_fields": (
+                    "not measured, disabled, not applicable, or overrange; never zero"
+                ),
+            }
+        )
         # Persist the file header before any hardware is energized.
         self.operation = "connecting/configuring ROD-4"
         self.on_status(self.operation)
@@ -206,6 +233,9 @@ class ExperimentEngine:
             )
 
     def acquire(self, stage_name):
+        if self.cancel.is_set():
+            return
+        self.scan_id += 1
         with self.lock:
             pending, self.pending_range = self.pending_range, None
         if pending is not None:
@@ -243,12 +273,10 @@ class ExperimentEngine:
             row = {
                 "timestamp": timestamp,
                 "elapsed_s": elapsed,
-                "step": stage_name,
-                "device": f"{ch}+{sense}" if sense else str(ch) if ch else "single",
-                "slot": settings.slot if ch else None,
-                "channel": ch,
+                "scan_id": self.scan_id,
+                "recipe_step": stage_name,
+                "sensor_id": str(ch) if ch is not None else "single",
                 "sense_channel": sense,
-                "wire_mode": settings.wire_mode,
                 "resistance_ohm": reading.resistance,
                 "voltage_V": reading.voltage,
                 "current_A": reading.current,
@@ -264,19 +292,19 @@ class ExperimentEngine:
                 "resistance_range_actual_ohm": reading.resistance_range,
                 "gate_setpoint_V": self.gate_target,
                 "gate_voltage_V": gate_v,
-                "gate_status": "disabled"
+                "gate_status": None
                 if self.gate_target is None
                 else "measured"
                 if gate_v is not None
                 else "readback_unavailable",
-                "shutter_open": int(self.shutter_open),
+                "shutter_open": int(self.shutter_open) if self.shutter else None,
             }
             for key, gas_name in self.config.hardware.mfc_controller.gas_names.items():
                 row[f"gas_{key}_{gas_name}_setpoint_sccm"] = self.targets[key]
                 row[f"gas_{key}_{gas_name}_actual_sccm"] = actual[key]
             self.operation = "saving measurement CSV"
             self.csv.write(row)
-            data = dict(row, flows=actual)
+            data = dict(row, flows=actual, device=row["sensor_id"], step=stage_name)
             if self.stages:
                 remaining = max(
                     0,

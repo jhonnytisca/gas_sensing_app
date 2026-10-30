@@ -53,7 +53,7 @@ and 2700 are configured separately. Only the selected instrument is connected.
 | 2700 + 7706, 4 terminals | Resistance using pairs 1/11 through 10/20; force H/L and sense H/L |
 
 The card slot number can be 1 or 2. For example, `101` is channel 1 in slot 1;
-a Kelvin sensor is identified as `101+111`. The CSV field `device` identifies the
+a Kelvin sensor uses `sensor_id=101` and `sense_channel=111`. `sensor_id` identifies the
 sensor/channel, **not the instrument**. The 2400 uses `single`.
 
 The 7706 does not provide a direct current measurement path to the 2700 ammeter.
@@ -106,18 +106,29 @@ point. The row is written, then `flush()` and `fsync()` are called before notify
 the interface. Filenames include microseconds and a unique identifier; files are
 created exclusively to avoid overwriting another session.
 
+Each CSV has a matching `<same-stem>.metadata.json` containing initial settings,
+sensor/channel mappings, slot/wiring, hardware configuration, gas ranges, recipe,
+gate and shutdown settings. Keep both files together. Existing files retain their
+original schema. Elapsed time starts after instrument preparation completes.
+
 | Column | Meaning |
 | --- | --- |
 | `timestamp`, `elapsed_s` | ISO 8601 UTC timestamp and monotonic elapsed time |
-| `step`, `device`, `slot`, `channel`, `sense_channel`, `wire_mode` | Stage and connection identifiers |
+| `recipe_step`, `sensor_id`, `sense_channel` | Recipe stage (or MANUAL), sensor identifier and optional sense channel |
 | `resistance_ohm`, `voltage_V`, `current_A` | Electrical values returned by the instrument |
-| `measurement_status` | Simulated, unavailable, or out of range |
+| `measurement_status` | `ok`, `simulated`, `overrange`, or `overrange_or_unavailable` |
+| `resistance_range_mode`, `resistance_range_requested_ohm`, `resistance_range_actual_ohm` | Auto/manual, requested manual range, and instrument range readback when available |
 | `gate_setpoint_V`, `gate_voltage_V`, `gate_status` | Requested gate voltage and available readback |
 | `gas_N_NAME_setpoint_sccm`, `gas_N_NAME_actual_sccm` | Requested and actual flow for each gas |
-| `shutter_open` | Requested state: 0/1 |
+| `shutter_open` | Requested state: 0/1; empty if disabled |
 
 An empty field means no valid measurement is available; it is never replaced with
-zero. ROD-4 flow readings are converted from percentage of full scale to sccm.
+zero. ROD-4 flow readbacks are already in sccm and are saved without extra scaling.
+`scan_id` starts at 1 for each session and increments for every sensor round,
+continuing across recipe steps. All sensor rows in that round share the same ID.
+A stopped or failed round may contain fewer sensors. Setpoint commands still use
+percentage of the configured full scale; only readback scaling was removed.
+All gate fields are empty when disabled. All configured gas channels are retained.
 Electrical, gas, and gate readings are queried sequentially; they are not presented
 as simultaneous acquisitions across instruments.
 

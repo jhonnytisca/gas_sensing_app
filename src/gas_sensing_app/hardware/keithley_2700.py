@@ -75,16 +75,14 @@ class Keithley2700:
         # ROUT:CLOS automatically pairs n and n+10 for FRES on the 7706.
         self.instrument.write(f":ROUT:CLOS (@{channel})")
         value = measured(self.instrument.query(":READ?").strip())
-        status = "current_unavailable_7706"
-        if value is None:
-            status += ";overrange"
+        status = "overrange" if value is None else "ok"
         if self.settings.mode == "voltage":
-            return Reading(voltage=value, status=status + ";resistance_not_measured")
+            return Reading(voltage=value, status=status)
         function = "FRES" if self.settings.wire_mode == 4 else "RES"
         actual_range = float(self.instrument.query(f":SENS:{function}:RANG?"))
         return Reading(
             resistance=value,
-            status=status + ";voltage_not_measured",
+            status=status,
             resistance_range=actual_range,
         )
 

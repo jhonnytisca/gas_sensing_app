@@ -65,7 +65,8 @@ class AeraMFCManager:
 
     def get_actual_flow(self, channel_idx):
         channel = getattr(self.rod4, f"ch_{channel_idx}")
-        return channel.actual_flow * self.ranges[channel_idx] / 100.0
+        # With the controller configured for sccm, readback is already in sccm.
+        return channel.actual_flow
 
     def stop_all(self):
         for i in self.ranges.keys():
