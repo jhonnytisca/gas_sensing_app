@@ -319,7 +319,7 @@ class Dashboard(QMainWindow):
                 f"{value:.4g} {unit}" if value is not None else f"— {unit}"
             )
         text = f"Latest sensor: {data['device']} · {data['elapsed_s']:.1f} s"
-        if "recipe_step" in data:
+        if "recipe_steps" in data:
             text += (
                 f"\nStep {data['recipe_step']}/{data['recipe_steps']}: {data['step']}"
                 f" · total ≈ {data['recipe_total_s'] / 60:.2f} min"

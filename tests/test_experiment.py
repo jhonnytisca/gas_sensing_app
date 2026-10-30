@@ -86,6 +86,7 @@ def test_live_range_applies_between_frames_and_is_saved(config):
         engine.prepare()
         engine.acquire("test")
         engine.acquire("test")
+        assert [r["scan_id"] for r in rows] == [1, 1, 2, 2]
         assert [r["resistance_range_mode"] for r in rows] == [
             "auto",
             "auto",
@@ -96,6 +97,7 @@ def test_live_range_applies_between_frames_and_is_saved(config):
         with open(engine.log_path) as stream:
             saved = list(csv.DictReader(stream))
         assert saved[-1]["resistance_range_requested_ohm"] == "100000"
+        assert [r["scan_id"] for r in saved] == ["1", "1", "2", "2"]
         assert saved[-1]["resistance_range_actual_ohm"] == "100000"
         engine.update_resistance_range(True, 100000)
         engine.acquire("test")

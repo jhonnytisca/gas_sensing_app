@@ -43,6 +43,7 @@ class ExperimentEngine:
         self.gate_target = None
         self.errors = []
         self.started = 0
+        self.scan_id = 0
         self.operation = "preparing acquisition"
         self.active_gate = None
         self.stage_index = 0
@@ -140,7 +141,7 @@ class ExperimentEngine:
                     }
                     for ch in self.measurement.channels
                 ],
-                "flow_readback": "controller percentage * configured range_sccm / 100",
+                "flow_readback": "controller readback in sccm; no extra scaling",
                 "empty_fields": (
                     "not measured, disabled, not applicable, or overrange; never zero"
                 ),
@@ -232,6 +233,9 @@ class ExperimentEngine:
             )
 
     def acquire(self, stage_name):
+        if self.cancel.is_set():
+            return
+        self.scan_id += 1
         with self.lock:
             pending, self.pending_range = self.pending_range, None
         if pending is not None:
@@ -269,6 +273,7 @@ class ExperimentEngine:
             row = {
                 "timestamp": timestamp,
                 "elapsed_s": elapsed,
+                "scan_id": self.scan_id,
                 "recipe_step": stage_name,
                 "sensor_id": str(ch) if ch is not None else "single",
                 "sense_channel": sense,
@@ -299,7 +304,7 @@ class ExperimentEngine:
                 row[f"gas_{key}_{gas_name}_actual_sccm"] = actual[key]
             self.operation = "saving measurement CSV"
             self.csv.write(row)
-            data = dict(row, flows=actual)
+            data = dict(row, flows=actual, device=row["sensor_id"], step=stage_name)
             if self.stages:
                 remaining = max(
                     0,

@@ -113,7 +113,7 @@ flow before editing the configuration.
 The default names are dry air, wet air, analyte 1 and analyte 2. These are labels,
 not automatic gas identification. If the physical gas assignment differs, update
 `gas_names`. Flow values in the interface and CSV are in **sccm**. The driver
-converts ROD-4 percentage readings using each channel's configured range.
+saves ROD-4 readbacks directly in sccm; setpoint commands use percentage of range.
 
 ### Shutter, if installed
 
@@ -482,7 +482,9 @@ For a constant gate, choose **Hold one voltage** instead.
 ## 9. Read and analyze the results
 
 The CSV contains one row per sensor reading, so one scan of four sensors normally
-produces four rows. `timestamp` is UTC in ISO 8601 format; `elapsed_s` uses a
+produces four rows sharing one `scan_id`. IDs start at 1 per session and increase
+across recipe steps; interrupted scans may be incomplete. Use this column to
+group sensor rounds in Origin. `timestamp` is UTC in ISO 8601 format; `elapsed_s` uses a
 monotonic clock and is the shared plotting time. Channels are read sequentially,
 not simultaneously. Gas and gate readbacks are queried after the electrical reading.
 

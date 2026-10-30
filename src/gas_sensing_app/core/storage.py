@@ -17,6 +17,7 @@ class MeasurementCSV:
         self.fields = [
             "timestamp",
             "elapsed_s",
+            "scan_id",
             "recipe_step",
             "sensor_id",
             "sense_channel",

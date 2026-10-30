@@ -123,7 +123,11 @@ original schema. Elapsed time starts after instrument preparation completes.
 | `shutter_open` | Requested state: 0/1; empty if disabled |
 
 An empty field means no valid measurement is available; it is never replaced with
-zero. ROD-4 flow readings are converted from percentage of full scale to sccm.
+zero. ROD-4 flow readbacks are already in sccm and are saved without extra scaling.
+`scan_id` starts at 1 for each session and increments for every sensor round,
+continuing across recipe steps. All sensor rows in that round share the same ID.
+A stopped or failed round may contain fewer sensors. Setpoint commands still use
+percentage of the configured full scale; only readback scaling was removed.
 All gate fields are empty when disabled. All configured gas channels are retained.
 Electrical, gas, and gate readings are queried sequentially; they are not presented
 as simultaneous acquisitions across instruments.

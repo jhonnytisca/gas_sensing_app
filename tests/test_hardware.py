@@ -171,8 +171,9 @@ def test_2400_fixed_voltage_and_range(auto_range):
     assert driver.read().resistance == 500000
 
 
-def test_mfc_percent_to_sccm():
+@pytest.mark.parametrize("full_scale", [200, 1000])
+def test_mfc_readback_is_already_sccm(full_scale):
     driver = AeraMFCManager.__new__(AeraMFCManager)
-    driver.ranges = {1: 200}
+    driver.ranges = {1: full_scale}
     driver.rod4 = SimpleNamespace(ch_1=SimpleNamespace(actual_flow=25))
-    assert driver.get_actual_flow(1) == 50
+    assert driver.get_actual_flow(1) == 25
