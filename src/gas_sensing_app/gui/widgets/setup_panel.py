@@ -284,7 +284,7 @@ class SetupPanel(QTabWidget):
                 .replace("_", " ")
                 .capitalize()
             )
-            widget = number(0, 0, maximum, 3)
+            widget = number(self.config.manual_flows.get(channel, 0), 0, maximum, 3)
             widget.setSuffix(" sccm")
             widget.setAccessibleName(f"{name} target flow")
             widget.setToolTip(f"Channel {channel} · allowed range 0–{maximum:g} sccm")
@@ -292,6 +292,7 @@ class SetupPanel(QTabWidget):
             gas_form.addRow(name, widget)
         self.shutter_checkbox = QCheckBox("Expose sensor to light (open shutter)")
         self.shutter_checkbox.setEnabled(self.config.hardware.shutter.enabled)
+        self.shutter_checkbox.setChecked(self.config.manual_shutter_open)
         gas_form.addRow(self.shutter_checkbox)
         self.flow_total = hint("Total requested flow: 0 sccm")
         gas_form.addRow(self.flow_total)
@@ -313,6 +314,9 @@ class SetupPanel(QTabWidget):
         recipe_layout.addStretch()
         self.control_tabs.addTab(manual, "Manual flows")
         self.control_tabs.addTab(recipe, "Saved recipe")
+        self.control_tabs.setCurrentIndex(
+            1 if self.config.acquisition_mode == "recipe" else 0
+        )
         layout.addWidget(self.control_tabs)
         layout.addStretch()
         self.add_page(page, "2  Gases")

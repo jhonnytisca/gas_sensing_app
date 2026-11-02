@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from gas_sensing_app.config.config import load_failure_flows
+from gas_sensing_app.config.connections import connection_values
 from gas_sensing_app.config.validation import finite, flows
 from gas_sensing_app.hardware.factory import HardwareFactory
 
@@ -142,6 +143,16 @@ class ExperimentEngine:
                     ),
                 },
                 "hardware": asdict(self.config.hardware),
+                "configuration_source": dict(self.config.configuration_source),
+                "configuration_base_dir": self.config.base_dir,
+                "logging": asdict(self.config.logging),
+                "resolved_connections": connection_values(self.config),
+                "experiment_configuration": {
+                    "mode": "recipe" if self.stages else "manual",
+                    "manual_flows_sccm": self.config.manual_flows,
+                    "manual_shutter_open": self.config.manual_shutter_open,
+                    "recipe_file": self.config.recipe_file,
+                },
                 "gate_initial": asdict(self.gate_settings),
                 "recipe": [asdict(stage) for stage in self.stages]
                 if self.stages

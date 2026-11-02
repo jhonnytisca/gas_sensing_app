@@ -26,8 +26,19 @@ def main():
             path.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(ASSETS_DIR / "config.template.yaml", path)
         config = Config(path).load()
+        from gas_sensing_app.config.connections import load_local_connections
+
+        try:
+            load_local_connections(config)
+        except Exception as exc:
+            QMessageBox.warning(
+                None,
+                "Local device connections",
+                f"Local connections could not be loaded: {exc}\n"
+                "Startup YAML addresses will be used. Open Devices to correct them.",
+            )
         failure_path = Path(config.base_dir) / config.safety_file
-        if not failure_path.exists():
+        if config.shutdown_flows is None and not failure_path.exists():
             failure_path.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(ASSETS_DIR / "failure_gases.template.yaml", failure_path)
         # Delay GUI imports until QApplication exists (font/theme setup).

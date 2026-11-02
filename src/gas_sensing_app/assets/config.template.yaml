@@ -5,24 +5,24 @@ hardware:
   use_mock: true # Set to false to connect to actual instruments
 
   keithley_2400:
-    port: "COM3" # Update with actual system COM port (e.g., COM3 or /dev/ttyUSB0)
+    port: "" # Choose the local address with Devices in the top panel
     auto_range: false
     manual_range: 200000
     four_wire: true
 
   keithley_2700:
-    port: "GPIB0::16::INSTR"
+    port: "" # Choose the local address with Devices
     baud_rate: 9600 # RS-232 only; match front panel (factory default is 4800)
     read_termination: "\r" # RS-232 Tx TERM: CR; FLOW: NONE
 
   shutter:
-    port: "COM4" # Update with actual system COM port
+    port: "" # Optional shutter serial port; configured in Devices
     baud_rate: 115200
     open_angle: 90 # Physical servo open angle calibration
     closed_angle: 0 # Physical servo closed angle calibration
 
   mfc_controller:
-    port: "COM5" # Update with actual system COM port
+    port: "" # MFC VISA address; configured in Devices
     gas_names: {1: not_connected, 2: reference, 3: analyte, 4: not_connected}
     range_sccm:
       1: 1000 # Maximum limits per MFC channel

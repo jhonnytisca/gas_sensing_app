@@ -1,14 +1,22 @@
 """Single owner of run state, GUI actions and worker lifecycle."""
 
+from copy import deepcopy
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 
 from PyQt6.QtCore import QTimer
-from PyQt6.QtWidgets import QFileDialog
+from PyQt6.QtWidgets import QDialog, QFileDialog
 
 from gas_sensing_app.config.config import load_failure_flows
+from gas_sensing_app.config.connections import (
+    connection_problems,
+    save_local_connections,
+)
+from gas_sensing_app.config.profiles import load_profile, save_profile
 from gas_sensing_app.core.recipe import load_recipe
 from gas_sensing_app.core.worker import ExperimentWorker
+from gas_sensing_app.gui.connections_dialog import ConnectionsDialog
 from gas_sensing_app.gui.styles.theme_manager import load_theme, refresh_style
 from gas_sensing_app.hardware.factory import HardwareFactory
 
@@ -19,24 +27,149 @@ class DashboardController:
         self.worker = None
         self.recipe_path = None
         self.closing = False
-        self.console_log = None
-        console = config.logging.console_log
-        if console.enabled:
-            folder = Path(config.base_dir) / console.folder
-            folder.mkdir(parents=True, exist_ok=True)
-            stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S_%fZ")
-            self.console_log = (folder / f"{console.filename_prefix}_{stamp}.log").open(
-                "x", encoding="utf-8"
-            )
+        self.console_log = self.open_console_log(config)
         window.theme_selector.currentIndexChanged.connect(self.change_theme)
-        window.setup.load_recipe_btn.clicked.connect(self.select_recipe)
+        self.bind_setup()
+        window.load_config_btn.clicked.connect(self.select_configuration)
+        window.save_config_btn.clicked.connect(self.save_configuration)
+        window.connections_btn.clicked.connect(self.configure_devices)
         window.start_recipe_btn.clicked.connect(lambda: self.start("recipe"))
         window.start_manual_btn.clicked.connect(lambda: self.start("manual"))
         window.apply_manual_btn.clicked.connect(self.apply_manual)
-        window.setup.apply_range_btn.clicked.connect(self.apply_range)
         window.stop_btn.clicked.connect(self.stop)
         window.close_requested.connect(self.close_requested)
         window.destroyed.connect(self.close_log)
+        if config.recipe_file:
+            self.load_recipe_file(config.recipe_file)
+
+    @staticmethod
+    def open_console_log(config):
+        console = config.logging.console_log
+        if not console.enabled:
+            return None
+        folder = Path(config.base_dir) / console.folder
+        folder.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S_%fZ")
+        return (folder / f"{console.filename_prefix}_{stamp}.log").open(
+            "x", encoding="utf-8"
+        )
+
+    def bind_setup(self):
+        self.window.setup.load_recipe_btn.clicked.connect(self.select_recipe)
+        self.window.setup.apply_range_btn.clicked.connect(self.apply_range)
+
+    def select_configuration(self):
+        if self.window.running:
+            return
+        path, _ = QFileDialog.getOpenFileName(
+            self.window,
+            "Load experiment configuration",
+            self.config.base_dir,
+            "YAML (*.yaml *.yml)",
+        )
+        if path:
+            self.load_configuration_file(path)
+
+    def load_configuration_file(self, path):
+        if self.window.running:
+            return False
+        console_log = None
+        try:
+            config = load_profile(path, self.config)
+            console_log = self.open_console_log(config)
+            self.window.apply_configuration(config)
+        except Exception as exc:
+            if console_log:
+                console_log.close()
+            self.error(f"Configuration not loaded: {exc}")
+            return False
+        self.close_log()
+        self.console_log = console_log
+        self.config = config
+        self.recipe_path = None
+        self.window.start_recipe_btn.setEnabled(False)
+        self.bind_setup()
+        if config.recipe_file:
+            self.load_recipe_file(config.recipe_file)
+        self.status(
+            f"Configuration loaded: {Path(path).name}. Review settings before starting."
+        )
+        if (
+            connection_problems(config, config.measurement)
+            and not self.configure_devices()
+        ):
+            self.status(
+                "Configuration loaded. Assign required ports with Devices "
+                "before starting."
+            )
+        return True
+
+    def save_configuration(self):
+        path, _ = QFileDialog.getSaveFileName(
+            self.window,
+            "Save experiment configuration",
+            self.config.base_dir,
+            "YAML (*.yaml *.yml)",
+        )
+        if path:
+            if Path(path).suffix.lower() not in (".yaml", ".yml"):
+                path += ".yaml"
+            self.save_configuration_file(path)
+
+    def save_configuration_file(self, path):
+        try:
+            measurement, gate = self.window.settings()
+            mode = (
+                "recipe"
+                if self.window.setup.control_tabs.currentIndex() == 1
+                else "manual"
+            )
+            source = save_profile(
+                path,
+                self.config,
+                measurement,
+                gate,
+                self.flow_targets(),
+                self.window.setup.shutter_checkbox.isChecked(),
+                mode,
+                self.recipe_path,
+            )
+        except Exception as exc:
+            self.error(f"Configuration not saved: {exc}")
+            return False
+        self.config.configuration_source = source
+        self.status(f"Configuration saved: {Path(path).name}")
+        return True
+
+    def configure_devices(self):
+        if self.window.running:
+            return False
+        # Port setup should remain usable even if another form value is invalid.
+        measurement = replace(
+            self.config.measurement,
+            instrument=self.window.setup.instrument.currentData(),
+        )
+        dialog = ConnectionsDialog(self.config, measurement, self.window)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            dialog.deleteLater()
+            return False
+        try:
+            save_local_connections(dialog.config)
+        except Exception as exc:
+            self.error(f"Device connections not saved: {exc}")
+            dialog.deleteLater()
+            return False
+        self.config.hardware = deepcopy(dialog.config.hardware)
+        self.window.setup.shutter_checkbox.setEnabled(
+            self.config.hardware.shutter.enabled
+        )
+        if not self.config.hardware.shutter.enabled:
+            self.window.setup.shutter_checkbox.setChecked(False)
+        self.window.refresh_mode_badge()
+        self.window.setup.gate_changed()
+        self.status("Device connections saved on this computer.")
+        dialog.deleteLater()
+        return True
 
     def log(self, text):
         self.window.console_display.appendPlainText(text)
@@ -99,6 +232,12 @@ class DashboardController:
             return
         try:
             measurement, gate = self.window.settings()
+            if connection_problems(self.config, measurement):
+                if not self.configure_devices():
+                    return
+                problems = connection_problems(self.config, measurement)
+                if problems:
+                    raise ValueError("; ".join(problems))
             load_failure_flows(self.config)
             stages = (
                 load_recipe(self.recipe_path, self.config, gate)
@@ -107,7 +246,17 @@ class DashboardController:
             )
             for profile in [s.gate for s in stages] if stages else [gate]:
                 HardwareFactory(self.config).validate(profile)
-            worker = ExperimentWorker(self.config, measurement, gate, stages)
+            run_config = replace(
+                self.config,
+                measurement=measurement,
+                gate=gate,
+                manual_flows=self.flow_targets(),
+                manual_shutter_open=self.window.setup.shutter_checkbox.isChecked(),
+                acquisition_mode=mode,
+                recipe_file=self.recipe_path,
+                configuration_source=dict(self.config.configuration_source),
+            )
+            worker = ExperimentWorker(run_config, measurement, gate, stages)
             if mode == "manual":
                 worker.update_manual_setpoints(
                     self.window.setup.shutter_checkbox.isChecked(), self.flow_targets()
@@ -118,6 +267,8 @@ class DashboardController:
         self.worker = worker
         self.window.reset_readings()
         self.window.running = True
+        self.window.load_config_btn.setEnabled(False)
+        self.window.connections_btn.setEnabled(False)
         self.window.setup.set_running(True)
         self.window.setup.gate_group.setEnabled(False)
         self.window.start_manual_btn.setEnabled(False)
@@ -192,6 +343,8 @@ class DashboardController:
     def finished(self):
         worker = self.worker
         self.window.running = False
+        self.window.load_config_btn.setEnabled(True)
+        self.window.connections_btn.setEnabled(True)
         self.window.setup.set_running(False)
         self.window.setup.gate_group.setEnabled(True)
         self.window.start_manual_btn.setEnabled(True)
@@ -203,8 +356,11 @@ class DashboardController:
             self.window.setup.control_tabs.setTabEnabled(index, True)
         if worker.engine.log_path:
             self.log(f"CSV: {worker.engine.log_path}")
-            self.window.saved_file.setText("CSV saved · see Session details")
-            self.window.saved_file.setToolTip(worker.engine.log_path)
+            self.window.saved_file.setText('<a href="session-log">CSV saved</a>')
+            self.window.saved_file.setToolTip(
+                f"{worker.engine.log_path}\nOpen Session log for the full CSV path."
+            )
+            self.window.saved_file.show()
         if worker.engine.errors:
             self.error(worker.engine.errors[-1])
         self.worker = None

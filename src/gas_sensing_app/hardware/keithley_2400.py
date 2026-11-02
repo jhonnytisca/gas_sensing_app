@@ -4,7 +4,7 @@ from gas_sensing_app.core.measurement import Reading, measured
 
 
 class Keithley2400:
-    def __init__(self, resource_address):
+    def __init__(self, resource_address, baud_rate=9600, read_termination="\r"):
         import pyvisa
 
         self.rm = pyvisa.ResourceManager()
@@ -13,7 +13,8 @@ class Keithley2400:
             self.instrument = self.rm.open_resource(resource_address)
             self.instrument.timeout = 5000
             if self.instrument.interface_type == pyvisa.constants.InterfaceType.asrl:
-                self.instrument.read_termination = "\r"
+                self.instrument.baud_rate = baud_rate
+                self.instrument.read_termination = read_termination
                 self.instrument.write_termination = "\r"
             identity = self.instrument.query("*IDN?").strip()
             self.identity = identity

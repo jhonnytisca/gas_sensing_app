@@ -4,6 +4,75 @@ This guide takes you from preparing the connections to saving a complete gas
 exposure experiment. Labels match the English interface. Start with a simulation
 if you are unfamiliar with the application.
 
+## Save and load experiment configurations
+
+The top panel groups **Load config**, **Save config**, and **Devices**, followed
+by **Results**, **Session log**, and **Help**, with the theme selector at the far
+right. On narrow windows the controls wrap into rows in the same top panel.
+There is no bottom toolbar, leaving more vertical room for the plots. Start/Stop
+remain below the preparation column, and stay accessible in compact view.
+The Gate tab remains hidden.
+
+**Save config** exports the current preparation form to a versioned YAML file:
+measurement instrument, wiring, source level and compliance, automatic/manual
+ranges, pulses, settling delay, integration time, interval, manual gas flows,
+shutter selection, acquisition mode, gas channel names/capacities, logging
+preferences, and shutdown flows. Shutdown flows are embedded in the exported
+file, so its original `failure_gases.yaml` is not needed when moving it. For a
+legacy configuration, edit its shutdown file before saving to capture the intended
+purge/stop values. Saving does not start or reconfigure instruments.
+
+If a recipe is selected, its exact contents are copied alongside the configuration
+as `<configuration-name>.recipe.<content-hash>.yaml`, and the configuration refers
+to that relative filename. **Copy both files to another computer.** Manual mode
+can retain a selected recipe for later use. Saving in recipe mode requires a valid
+recipe. Do not rename or remove the recipe sidecar without updating its reference.
+
+**Load config** validates the entire file, shutdown flows and referenced recipe
+before replacing the preparation form. Invalid or missing dependencies leave the
+current form intact. Existing legacy `config.yaml` files can also be loaded;
+their external shutdown file must be present. Loading clears the displayed plot
+history; existing CSV recordings remain on disk. Review the restored settings
+and simulation/real-instrument badge before pressing Start. Relative output folders
+are resolved against the loaded configuration's folder; absolute folders stay
+absolute. Saving elsewhere does not itself change the active output directory;
+loading that saved file applies its relative paths.
+
+### Device ports belong to this computer
+
+Experiment exports omit all device addresses and serial transport settings.
+**Devices** opens a local connections dialog for both Keithleys, the MFC / ROD-4,
+and the optional shutter. The selected Keithley and MFC require assignments for
+real runs; the other Keithley does not. Enable the shutter only when connected.
+
+Use **Refresh available ports** to list serial ports and VISA resources. Adapter
+descriptions help distinguish cables, but discovery does not open devices or verify
+identity. Select a candidate or type an address manually, including stable Linux
+`/dev/serial/by-id/...` paths or network/GPIB VISA addresses. COM names and raw serial
+paths entered for a Keithley or MFC are converted to VISA ASRL addresses. The
+shutter uses a raw serial port. Set Keithley baud rate and read termination to match
+the instrument; shutter baud rate must match its firmware. Simulation selection
+and shutter enablement belong to the experiment and are retained by **Save config**.
+
+Saving in **Devices** stores transport settings in `device_connections.yaml` in
+the operating system's application configuration directory (the exact path is shown
+in the dialog). They are reused at startup and retained when loading another
+experiment, including a legacy file containing another computer's ports. Existing
+startup YAML ports are the fallback until local assignments have been saved.
+Fresh templates leave assignments empty. Missing required assignments prompt for
+Devices on profile load or before starting; cancelling never starts a run. Ports
+that are assigned but disconnected can still fail when acquisition connects.
+Duplicate assignments to required devices are rejected. An existing saved/manual
+address remains available even if discovery does not list it.
+
+**Load config** and **Devices** are disabled during acquisition. **Save config**
+remains available and saves the current form, including edits that have not yet
+been applied to running gas flows. It does not change the active run's metadata.
+Each new run records configuration filename/path and SHA-256, actual requested
+settings, resolved local connections, output-folder base directory and logging
+preferences in its metadata. Instrument readbacks remain separate from requested
+settings. Connection discovery and loading files never energize hardware.
+
 ## 1. Know which setup you are using
 
 | Setup | Select in the interface | What is recorded |
@@ -142,7 +211,9 @@ and readback must be integrated and checked on the bench.
 
 The application reads `config.yaml` in the directory from which it is launched,
 or the file passed with `--config`. Edit it while no experiment is running, then
-restart the application. Existing configurations are not overwritten.
+reload it with **Load config**, or restart the application. Existing configurations
+are not overwritten. Local assignments saved through **Devices** take precedence
+over startup YAML ports.
 
 The complete reference is `src/gas_sensing_app/assets/config.template.yaml`.
 Important fields are:
@@ -257,7 +328,8 @@ uv run sensor --config /absolute/path/to/config.yaml
 
 The app loads YAML at startup. GUI edits apply to the next run but are not saved
 back to YAML. Stop the current measurement before changing electrical settings;
-restart the app after editing YAML or updating the driver code.
+use **Load config** after editing YAML, or restart the app. Driver code updates
+still require restarting the app.
 
 ### Measure resistance at a controlled voltage, step by step
 
@@ -283,7 +355,7 @@ restart the app after editing YAML or updating the driver code.
    wiring and range; a finite displayed/returned number is not by itself proof
    of a valid resistance measurement. Stop and inspect unexpected readings.
 7. Press **Stop measurement**. Wait for shutdown to finish and confirm output is
-   off. Use the CSV path in Session details; readings are saved automatically.
+   off. Use the CSV path in Session log; readings are saved automatically.
 
 **Range controls:** automatic-ohms mode chooses the test current from the selected
 resistance range. Fixed-voltage and fixed-current modes use manual ohms and cannot
@@ -351,8 +423,9 @@ Live plots follow the latest five minutes using the viewer's per-curve 1st–99t
 percentile scaling. Small series are displayed in full. **Spike-resistant**
 changes axes only; no samples are removed from the CSV or curve history. Gas
 flows and gate setpoints keep their full amplitude. Zoom or pan pauses following.
-**Full range** shows all retained history and includes spikes. **Live view**
-resumes following and restores spike-resistant scaling. Plot history retains up
+**Full range** shows all retained history, includes spikes, and keeps expanding
+its axes as new measurements arrive. **Live view** returns to following the latest
+five minutes and restores spike-resistant scaling. Zoom or pan pauses either view. Plot history retains up
 to 10,000 samples per curve; use the results viewer for the complete CSV.
 
 Command references: [2400 manual](https://download.tek.com/manual/2400S-900-01_K-Sep2011_User.pdf)
@@ -418,11 +491,11 @@ test. Connections are opened only when starting the session.
 
 - **1 Measurement:** select the instrument setup, measurement, wiring and interval.
 - **2 Gases:** set manual flows or load and preview a saved recipe.
-- **3 Gate (optional):** leave off, hold a voltage or configure a sweep.
-- **Start / Stop:** always accessible below the workspace.
+- The optional Gate tab is currently hidden.
+- **Start / Stop:** below the preparation column; accessible in either compact view.
 - **Live readings:** the most recent sensor's R, V and I; each card shows its unit.
 - **Plot buttons:** show or hide available signals to compare them; visible plots share the same time axis.
-- **Fit plots:** restore the automatic view after zooming or panning.
+- **Full range / Live view:** follow all retained history or the latest five minutes.
 - **Recipe progress:** beside the latest sensor and elapsed time, see the current
   step, estimated total duration and remaining minutes, plus each gas channel's
   setpoint and measured flow. The recipe preview also lists individual gas
@@ -430,8 +503,8 @@ test. Connections are opened only when starting the session.
   instrument communication and reading times can extend execution. Progress
   refreshes with existing readings and adds no instrument queries or waits.
 - **Dark / Light:** change the interface, curves, axes and legends together.
-- **Session details:** open connection, progress and error messages.
-- **Operator guide:** open this manual.
+- **Session log:** open connection, progress and error messages from the top panel.
+- **Help:** open this manual from the top panel.
 
 On smaller screens, switch between **Prepare experiment** and **Live readings**.
 Starting a session opens Live readings automatically. Start/Stop remain visible
@@ -452,8 +525,9 @@ in either view. Scroll inside the setup page or plot panel to reach all content.
 6. Select **Start measurement**. Wait for the first reading and confirm that plots
    appear. A CSV is created automatically; no Save button is required.
 7. Select **Stop measurement**. Wait for the stopped/completed status before
-   closing the application. The bottom bar confirms the CSV was saved; its tooltip
-   shows the full path, and Session details records the filename and path too.
+   closing the application. A small **CSV saved** link appears below the measurement
+   buttons. Its tooltip shows the full path; selecting it opens **Session log**,
+   which records the filename and path too.
 
 Mock values are reproducible test data. They demonstrate application behavior,
 not a physical sensor response model or equipment calibration.
@@ -636,7 +710,7 @@ reaching equipment; follow the laboratory's independent shutdown procedure.
 | Session fails because the shutter is missing | Configure its actual port or set `hardware.shutter.enabled: false` |
 | Gate transport error | Real EA communication is not integrated; disable gate in both the UI and recipe |
 | No current for a 7706 sensor | Expected hardware limitation; the present card wiring does not support direct current acquisition |
-| Missing/out-of-range electrical value | Sensor wiring, channel selection and approved measurement range; inspect Session details |
+| Missing/out-of-range electrical value | Sensor wiring, channel selection and approved measurement range; inspect Session log |
 | Gas value rejected | Check the channel's configured range and units; setpoints must be finite, nonnegative and within that range |
 | Gas changes do not apply immediately | Press Apply; changes wait until the active sweep ends |
 | Invalid shutdown profile | Check the file path, YAML structure, channel numbers and flow limits; restart the session after correcting it |
