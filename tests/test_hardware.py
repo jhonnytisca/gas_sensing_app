@@ -166,7 +166,7 @@ def test_2400_fixed_voltage_and_range(auto_range):
         < commands.index(":SOUR:FUNC VOLT")
     )
     assert ":SENS:RES:MODE AUTO" not in commands
-    assert (":SENS:RES:RANG 2000000" in commands) is not auto_range
+    assert not any(command.startswith(":SENS:RES:RANG") for command in commands)
     assert commands[-1] == ":OUTP ON"
     assert driver.read().resistance == 500000
 
@@ -177,3 +177,95 @@ def test_mfc_readback_is_already_sccm(full_scale):
     driver.ranges = {1: full_scale}
     driver.rod4 = SimpleNamespace(ch_1=SimpleNamespace(actual_flow=25))
     assert driver.get_actual_flow(1) == 25
+
+
+@pytest.mark.parametrize(
+    "mode,sense", [("constant_current", "VOLT"), ("constant_voltage", "CURR")]
+)
+def test_2400_pulse_ranges_and_off_on_failure(mode, sense):
+    driver = Keithley2400.__new__(Keithley2400)
+    driver.instrument = Mock()
+    driver.instrument.query.return_value = '0,"No error"'
+    driver.configure(
+        MeasurementSettings(
+            mode=mode,
+            pulsed=True,
+            source_auto_range=False,
+            source_voltage_range=2,
+            source_current_range=1e-6,
+            voltage_auto_range=False,
+            voltage_range=2,
+            current_auto_range=False,
+            current_range=1e-6,
+            settling_s=0.025,
+            nplc=2,
+        )
+    )
+    commands = [call.args[0] for call in driver.instrument.write.call_args_list]
+    assert ":OUTP ON" not in commands
+    assert ":SOUR:CLE:AUTO ON" in commands
+    assert ":OUTP:SMOD HIMP" in commands
+    assert ":SOUR:DEL 0.025" in commands
+    assert ":SENS:VOLT:NPLC 2" in commands
+    assert f":SENS:{sense}:RANG:AUTO OFF" in commands
+    assert commands.index(
+        f":SENS:{sense}:PROT " + ("2.0" if sense == "VOLT" else "0.01")
+    ) < commands.index(f":SENS:{sense}:RANG:AUTO OFF")
+    if mode == "constant_current":
+        assert ":SOUR:CURR:LEV 5e-07" in commands
+        assert ":SOUR:CURR:RANG 1e-06" in commands
+        assert ":SENS:CURR:RANG:AUTO OFF" not in commands
+    driver.instrument.query.return_value = "0.1,5e-7,200000"
+    assert driver.read().current == 5e-7
+    driver.instrument.write.assert_called_with(":OUTP OFF")
+    driver.instrument.query.side_effect = TimeoutError("read timed out")
+    with pytest.raises(TimeoutError):
+        driver.read()
+    driver.instrument.write.assert_called_with(":OUTP OFF")
+
+
+@pytest.mark.parametrize(
+    "mode,wires,function",
+    [("resistance", 2, "RES"), ("resistance", 4, "FRES"), ("voltage", 2, "VOLT:DC")],
+)
+def test_2700_integration_applies_to_channels_and_active_function(
+    mode, wires, function
+):
+    driver = Keithley2700.__new__(Keithley2700)
+    driver.instrument = Instrument("1")
+    driver.configure(
+        MeasurementSettings(
+            instrument="2700",
+            mode=mode,
+            wire_mode=wires,
+            nplc=5,
+            voltage_auto_range=False,
+            voltage_range=10,
+        )
+    )
+    assert f":SENS:{function}:NPLC 5,(@101)" in driver.instrument.commands
+    assert f":SENS:{function}:NPLC 5" in driver.instrument.commands
+    if mode == "voltage":
+        assert ":SENS:VOLT:DC:RANG 10,(@101)" in driver.instrument.commands
+
+
+def test_real_configuration_snapshots_preserve_raw_readbacks():
+    smu = Keithley2400.__new__(Keithley2400)
+    smu.identity = "KEITHLEY,MODEL 2400,serial,firmware"
+    smu.settings = MeasurementSettings(mode="constant_current", pulsed=True)
+    smu.instrument = Mock()
+    smu.instrument.query.side_effect = lambda cmd: (
+        '0,"No error"' if cmd == ":SYST:ERR?" else "5.000000E-07\n"
+    )
+    snapshot = smu.configuration_snapshot()
+    assert snapshot["identity"] == smu.identity
+    assert not snapshot["simulated"]
+    assert snapshot["scpi_readbacks"][":SOUR:CURR:LEV?"] == "5.000000E-07"
+    assert ":SENS:RES:RANG?" not in snapshot["scpi_readbacks"]
+    dmm = Keithley2700.__new__(Keithley2700)
+    dmm.identity = "KEITHLEY,MODEL 2700,serial,firmware"
+    dmm.settings = MeasurementSettings(instrument="2700", wire_mode=4, last_channel=2)
+    dmm.instrument = smu.instrument
+    snapshot = dmm.configuration_snapshot()
+    assert ":SENS:FRES:NPLC? (@101)" in snapshot["scpi_readbacks"]
+    assert ":SENS:FRES:RANG? (@102)" in snapshot["scpi_readbacks"]

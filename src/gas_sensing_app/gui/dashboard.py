@@ -3,6 +3,8 @@
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QApplication,
+    QBoxLayout,
+    QCheckBox,
     QDialog,
     QFrame,
     QHBoxLayout,
@@ -59,11 +61,15 @@ class Dashboard(QMainWindow):
         self.splitter.setChildrenCollapsible(False)
         outer.addWidget(self.splitter, 1)
         self.setup_view = self.build_setup()
+        self.setup_column = QWidget()
+        self.setup_column_layout = QVBoxLayout(self.setup_column)
+        self.setup_column_layout.setContentsMargins(0, 0, 0, 0)
+        self.setup_column_layout.addWidget(self.setup_view, 1)
+        self.setup_column_layout.addWidget(self.actions)
         self.monitor_view = self.build_monitor()
-        self.splitter.addWidget(self.setup_view)
+        self.splitter.addWidget(self.setup_column)
         self.splitter.addWidget(self.monitor_view)
         self.splitter.setSizes([440, 960])
-        outer.addWidget(self.actions)
         outer.addWidget(self.build_details())
         self.setup.changed.connect(self.refresh_summary)
         self.setup.changed.connect(self.update_plot_availability)
@@ -133,7 +139,8 @@ class Dashboard(QMainWindow):
         actions_layout.setContentsMargins(0, 0, 0, 0)
         actions_layout.setSpacing(4)
         actions_layout.addWidget(self.summary)
-        buttons = QHBoxLayout()
+        buttons = QVBoxLayout()
+        self.action_buttons = buttons
         self.start_manual_btn = QPushButton("Start measurement")
         self.start_recipe_btn = QPushButton("Start recipe")
         self.start_recipe_btn.setEnabled(False)
@@ -202,10 +209,32 @@ class Dashboard(QMainWindow):
             plot_buttons.addWidget(button)
         heading.addWidget(plot_selector)
         heading.addSpacing(8)
-        self.fit_plots_btn = QPushButton("Fit plots")
-        self.fit_plots_btn.setToolTip("Show the full recorded time range in the plots.")
-        heading.addWidget(self.fit_plots_btn)
+        self.fit_plots_btn = QPushButton("Full range")
+        self.fit_plots_btn.setToolTip(
+            "Show all retained plot history (up to 10,000 samples per curve), "
+            "including spikes. Recording continues. Full history is saved to CSV."
+        )
+        plot_controls = QHBoxLayout()
+        self.robust_plots = QCheckBox("Spike-resistant")
+        self.robust_plots.setChecked(True)
+        self.robust_plots.setToolTip(
+            "Scale axes to each curve's 1st–99th percentiles. No data is removed. "
+            "Gas flows and gate setpoints retain their full range."
+        )
+        self.robust_plots.toggled.connect(self.plots.set_robust)
+        plot_controls.addWidget(self.robust_plots)
+        plot_controls.addWidget(self.fit_plots_btn)
+        self.live_plots_btn = QPushButton("Live view")
+        self.live_plots_btn.setToolTip(
+            "Follow the latest 5 minutes with spike-resistant axes. "
+            "Zooming or panning pauses following."
+        )
+        plot_controls.addWidget(self.live_plots_btn)
+        self.live_plots_btn.clicked.connect(self.plots.resume_live)
+        self.live_plots_btn.clicked.connect(lambda: self.robust_plots.setChecked(True))
+        self.fit_plots_btn.clicked.connect(lambda: self.robust_plots.setChecked(False))
         layout.addLayout(heading)
+        layout.addLayout(plot_controls)
         metric_layout = QHBoxLayout()
         metric_layout.setSpacing(10)
         self.metrics = {}
@@ -303,9 +332,14 @@ class Dashboard(QMainWindow):
             if manual
             else "Gas flows and gate overrides follow the recipe"
         )
+        pulsed = (
+            setup.instrument.currentData() == "2400"
+            and setup.extra_checks["pulsed"].isChecked()
+        )
+        interval_label = "off time" if pulsed else "interval"
         self.summary.setText(
-            f"{instrument} · {setup.wires.currentData()} terminals · "
-            f"every {setup.interval.value():g} s\n{gas_text}"
+            f"{instrument} · {setup.wires.currentData()} terminals · {interval_label} "
+            f"{setup.interval.value():g} s\n{gas_text}"
         )
 
     def settings(self):
@@ -354,7 +388,9 @@ class Dashboard(QMainWindow):
         if not hasattr(self, "setup_view"):
             return
         compact = self.width() < 980
-        self.setup_view.setVisible(not compact or self.compact_nav.currentIndex() == 0)
+        self.setup_column.setVisible(
+            not compact or self.compact_nav.currentIndex() == 0
+        )
         self.monitor_view.setVisible(
             not compact or self.compact_nav.currentIndex() == 1
         )
@@ -368,12 +404,29 @@ class Dashboard(QMainWindow):
         if hasattr(self, "monitor_view"):
             compact = self.width() < 980
             self.compact_nav.setVisible(compact)
+            self.place_actions(compact)
             self.summary.setVisible(not compact)
             self.outer.setSpacing(8 if compact else 12)
             self.splitter.setOrientation(
                 Qt.Orientation.Vertical if compact else Qt.Orientation.Horizontal
             )
             self.select_compact_view()
+
+    def place_actions(self, compact):
+        # Compact navigation hides the preparation column; keep Stop accessible.
+        target = self.outer if compact else self.setup_column_layout
+        if target.indexOf(self.actions) < 0:
+            self.actions.parentWidget().layout().removeWidget(self.actions)
+            if compact:
+                self.outer.insertWidget(self.outer.count() - 1, self.actions)
+            else:
+                self.setup_column_layout.addWidget(self.actions)
+        self.action_buttons.setDirection(
+            QBoxLayout.Direction.LeftToRight
+            if compact
+            else QBoxLayout.Direction.TopToBottom
+        )
+        self.actions.show()
 
     def show_guide(self):
         from .widgets.operator_guide import OperatorGuide

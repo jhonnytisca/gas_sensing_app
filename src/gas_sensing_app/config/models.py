@@ -85,6 +85,19 @@ class MeasurementSettings:
     auto_range: bool = True
     manual_range: float = 200000.0
 
+    source_current: float = 0.5e-6
+    voltage_compliance: float = 2.0
+    source_auto_range: bool = True
+    source_voltage_range: float = 20.0
+    source_current_range: float = 1e-6
+    voltage_auto_range: bool = True
+    voltage_range: float = 20.0
+    current_auto_range: bool = True
+    current_range: float = 1e-6
+    pulsed: bool = False
+    settling_s: float = 0.01
+    nplc: float = 1.0
+
     @property
     def channels(self):
         if self.instrument == "2400":
@@ -100,7 +113,7 @@ class MeasurementSettings:
         if self.instrument not in ("2400", "2700") or self.wire_mode not in (2, 4):
             raise ValueError("Select a supported instrument and 2 or 4 terminals")
         modes = (
-            ("resistance", "constant_voltage")
+            ("resistance", "constant_voltage", "constant_current")
             if self.instrument == "2400"
             else ("resistance", "voltage")
         )
@@ -108,8 +121,7 @@ class MeasurementSettings:
             raise ValueError(
                 f"Mode {self.mode!r} is not supported by {self.instrument}"
             )
-        if not isinstance(self.auto_range, bool):
-            raise ValueError("auto_range must be a boolean")
+        self.validate_source_settings()
         for key in ("wire_mode", "slot", "first_channel", "last_channel"):
             if type(getattr(self, key)) is not int:
                 raise ValueError(f"{key} must be an integer")
@@ -125,12 +137,59 @@ class MeasurementSettings:
                     "2700 voltage uses two terminals; "
                     "four-terminal mode is for resistance"
                 )
-        finite(self.bias_voltage, "bias_voltage", -200, 200)
+        finite(self.bias_voltage, "bias_voltage", -210, 210)
         finite(self.compliance, "compliance", 1e-9, 1.05)
         finite(self.interval_s, "interval_s", 0.01, 86400)
         finite(self.manual_range, "manual_range", 1e-9, 1e12)
         if self.instrument == "2700" and self.mode == "resistance":
             finite(self.manual_range, "2700 resistance range", 100, 100e6)
+
+    def validate_source_settings(self):
+        from .validation import finite
+
+        for key in (
+            "auto_range",
+            "source_auto_range",
+            "voltage_auto_range",
+            "current_auto_range",
+            "pulsed",
+        ):
+            if not isinstance(getattr(self, key), bool):
+                raise ValueError(f"{key} must be a boolean")
+        finite(self.source_current, "source_current", -1.05, 1.05)
+        finite(self.voltage_compliance, "voltage_compliance", 0.0002, 210)
+        finite(self.settling_s, "settling_s", 0, 60)
+        finite(self.nplc, "nplc", 0.01, 10 if self.instrument == "2400" else 50)
+        for key, minimum, maximum in (
+            ("source_voltage_range", 0.2, 200),
+            ("source_current_range", 1e-6, 1),
+            (
+                "voltage_range",
+                0.2 if self.instrument == "2400" else 0.1,
+                200 if self.instrument == "2400" else 1000,
+            ),
+            ("current_range", 1e-6, 1),
+        ):
+            finite(getattr(self, key), key, minimum, maximum)
+        if self.instrument == "2400" and not self.source_auto_range:
+            if (
+                self.mode == "constant_voltage"
+                and abs(self.bias_voltage)
+                > next(r for r in (0.2, 2, 20, 200) if r >= self.source_voltage_range)
+                * 1.05
+            ):
+                raise ValueError("Applied voltage exceeds the selected source range")
+            if (
+                self.mode == "constant_current"
+                and abs(self.source_current)
+                > next(
+                    r
+                    for r in (1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 0.1, 1)
+                    if r >= self.source_current_range
+                )
+                * 1.05
+            ):
+                raise ValueError("Applied current exceeds the selected source range")
 
 
 @dataclass

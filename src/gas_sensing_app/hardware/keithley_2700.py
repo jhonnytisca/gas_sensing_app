@@ -21,6 +21,7 @@ class Keithley2700:
                 self.instrument.write_termination = "\r"
                 self.instrument.flow_control = pyvisa.constants.ControlFlow.none
             identity = self.instrument.query("*IDN?").strip()
+            self.identity = identity
             fields = identity.upper().split(",")
             if len(fields) < 2 or fields[1].strip() != "MODEL 2700":
                 raise RuntimeError(
@@ -35,6 +36,7 @@ class Keithley2700:
             raise
 
     def configure(self, settings):
+        settings.validate()
         self.settings = settings
         channels = ",".join(str(ch) for ch in settings.channels)
         function = (
@@ -48,9 +50,43 @@ class Keithley2700:
         self.instrument.write(":FORM:ELEM READ")
         self.instrument.write(":TRIG:COUN 1")
         self.instrument.write(":SAMP:COUN 1")
+        for suffix in (f",(@{channels})", ""):
+            self.instrument.write(f":SENS:{function}:NPLC {settings.nplc:g}{suffix}")
+            if settings.mode == "voltage":
+                self.instrument.write(
+                    ":SENS:VOLT:DC:RANG:AUTO "
+                    + ("ON" if settings.voltage_auto_range else "OFF")
+                    + suffix
+                )
+                if not settings.voltage_auto_range:
+                    self.instrument.write(
+                        f":SENS:VOLT:DC:RANG {settings.voltage_range:g}{suffix}"
+                    )
+        self.instrument.timeout = max(5000, int((settings.nplc / 50 * 3 + 5) * 1000))
         if settings.mode == "resistance":
             self.set_resistance_range(settings)
         self.check_error()
+
+    def configuration_snapshot(self):
+        settings = self.settings
+        function = (
+            "VOLT:DC"
+            if settings.mode == "voltage"
+            else "FRES"
+            if settings.wire_mode == 4
+            else "RES"
+        )
+        readbacks = {":SYST:LFR?": self.instrument.query(":SYST:LFR?").strip()}
+        for channel in settings.channels:
+            for key in ("NPLC", "RANG:AUTO", "RANG"):
+                command = f":SENS:{function}:{key}? (@{channel})"
+                readbacks[command] = self.instrument.query(command).strip()
+        self.check_error()
+        return {
+            "simulated": False,
+            "identity": self.identity,
+            "scpi_readbacks": readbacks,
+        }
 
     def check_error(self):
         response = self.instrument.query(":SYST:ERR?")

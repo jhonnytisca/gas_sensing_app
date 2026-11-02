@@ -44,8 +44,11 @@ connection and no rear-terminal selection is sent by the application.
   the corresponding Kelvin sense contacts. Select **4 terminals · Kelvin**.
   Do not interchange gate leads with force or sense leads.
 
-Choose **Resistance · automatic test current** for automatic ohms acquisition.
-Choose **Resistance, voltage & current · fixed voltage** to control the applied
+Choose **Automatic ohms** for automatic ohms acquisition. This mode chooses the
+test current and source/sense ranges automatically. Pulsed output and integration
+time remain configurable. Choose fixed current or fixed voltage when explicit
+control of the applied source level is needed.
+Choose **Fixed voltage · R, V & I** to control the applied
 voltage while reading all three electrical quantities. In that mode, enter
 **Applied voltage (V)** and **Current limit (A)**.
 The current limit control applies to this voltage-source mode; it is not a user-set
@@ -53,8 +56,10 @@ excitation current for automatic resistance measurements.
 
 In YAML, select `measurement.mode: constant_voltage` and set
 `measurement.bias_voltage` (volts) and `measurement.compliance` (amps).
-Enable **Resistance autorange** (`measurement.auto_range: true`) or set a suitable
-**Resistance range (Ω)** (`measurement.manual_range`) with autorange disabled.
+In **Automatic ohms** mode, enable **Resistance autorange**
+(`measurement.auto_range: true`) or set a suitable **Resistance range (Ω)**
+(`measurement.manual_range`) with autorange disabled. Fixed-source modes instead
+use source and opposite-quantity measurement ranges, as described below.
 An overflow can indicate a range that is too low or an open sensor connection;
 changing voltage alone does not guarantee an on-range measurement.
 
@@ -260,12 +265,13 @@ restart the app after editing YAML or updating the driver code.
    terminals. For four-wire measurements, also connect SENSE HI/LO correctly.
    Select two terminals if only two leads are attached.
 2. In **1 Measurement**, select **One sensor · Keithley 2400**, then
-   **Resistance, voltage & current · fixed voltage**. Do not select automatic
+   **Fixed voltage · R, V & I**. Do not select automatic
    test current if you need to control the voltage.
 3. Set **Applied voltage (V)** and the sensor-appropriate **Current limit (A)**.
    These control the 2400 source, not the optional gate. Enable resistance
-   autorange initially; use a fixed resistance range only when appropriate for
-   the expected sensor resistance.
+   measurement autorange initially; the current measurement range can also be
+   selected manually. Resistance is calculated from V/I in fixed-source modes;
+   an independent resistance range is available only in automatic-ohms mode.
 4. Set the reading interval. In **2 Gases**, review all flow setpoints and the
    gas channel assignments. Review `failure_gases.yaml` for the values to apply
    after stopping. Leave the gate off for real measurements.
@@ -279,10 +285,79 @@ restart the app after editing YAML or updating the driver code.
 7. Press **Stop measurement**. Wait for shutdown to finish and confirm output is
    off. Use the CSV path in Session details; readings are saved automatically.
 
-**Two different meanings of “auto”:** resistance autoranging selects the
-measurement range and is compatible with a fixed source voltage. Automatic-ohms
-mode selects the source current itself and does not honor `bias_voltage` as an
-applied-voltage target. Current compliance is a limit, not a commanded test current.
+**Range controls:** automatic-ohms mode chooses the test current from the selected
+resistance range. Fixed-voltage and fixed-current modes use manual ohms and cannot
+accept an independent ohms range. Source range has automatic/manual selection;
+the measured quantity matching the source shares its range. The opposite quantity
+has its own automatic/manual measurement range. Requested capacities round up to
+the instrument's supported ranges. Manual measurement ranges can restrict the
+achievable compliance limit. Current compliance is a limit, not a test-current setpoint.
+
+### Fixed current and pulsed measurements on the 2400
+
+Select **Fixed current · R, V & I**. The **Applied current
+(µA)** field defaults to **0.5 µA** and the configurable **Voltage limit (V)**
+defaults to **2 V**. At these settings a 0.5 µA current can be maintained only up
+to approximately 4 MΩ. For example, a 20 MΩ sample would require 10 V to sustain
+0.5 µA; with a 2 V limit, the current is reduced instead. A 2700's range label
+alone does not establish the sample's actual resistance or guarantee identical
+excitation and timing.
+
+Enable **Pulse output** to use the 2400's source auto-clear
+cycle: source on, configurable source settling delay, acquisition, high-impedance
+output off. The default settling delay is 10 ms, a starting point rather than a
+sensor-specific optimum. Increase it if the sensor and cables need more settling.
+Actual on-time also includes integration, autoranging, autozero and communication
+or instrument overhead; this is not the dedicated pulse mode of a Model 2430.
+The **Off time between pulses (s)** field specifies the minimum pause from the
+previous output off to the next output on, including across recipe stages and
+gate sweep points. Other operations may extend it. Continuous mode keeps the
+original scan-start interval behavior. Stop interrupts waits; a read already in
+progress finishes or times out before shutdown completes.
+
+### Integration time on both meters
+
+**Integration time (NPLC)** defaults to **1**, a practical speed/noise compromise.
+One power-line cycle is 20 ms at 50 Hz or about 16.7 ms at 60 Hz per conversion.
+Lower values are faster but noisier; higher values average longer and increase
+pulse on-time. Whole-cycle settings reject power-line noise. The 2400 accepts
+0.01–10 NPLC; the 2700 control exposes 0.01–50 NPLC. Concurrent readings,
+autozero and autoranging add time, so NPLC is not the whole read duration.
+The hover hint explains these tradeoffs. Settings are recorded in the session's
+metadata JSON. Existing configuration files use these defaults when fields are
+absent; the distributed configuration template lists all new fields.
+
+The metadata sidecar uses schema version 3. `measurement_initial` preserves every
+requested field in SI units (current in A even though the UI shows µA), while
+`measurement_details` identifies active source/compliance values, units, range
+constraints and interval/pulse semantics. `instrument_configuration` preserves
+instrument identity and raw SCPI readbacks of line frequency, NPLC, active source,
+compliance and ranges. These are snapshots after configuration, not per-reading
+autorange values. Simulation snapshots are explicitly labeled and never presented
+as physical readbacks. Runtime 2700 range changes append timestamped
+`configuration_events` with the first affected scan ID and a new readback snapshot.
+The metadata is updated atomically and records final settings, end time, completion
+state and shutdown/acquisition errors. Failed startup retains the initial request
+with no effective snapshot if configuration could not be completed.
+
+CSV schema 3 also adds `acquisition_started_elapsed_s` and
+`acquisition_duration_s`, measured around each driver read using the host's
+monotonic clock. These include communication and output-off confirmation and
+must not be interpreted as precise source-on timestamps or pulse widths.
+
+### Live plot navigation
+
+Live plots follow the latest five minutes using the viewer's per-curve 1st–99th
+percentile scaling. Small series are displayed in full. **Spike-resistant**
+changes axes only; no samples are removed from the CSV or curve history. Gas
+flows and gate setpoints keep their full amplitude. Zoom or pan pauses following.
+**Full range** shows all retained history and includes spikes. **Live view**
+resumes following and restores spike-resistant scaling. Plot history retains up
+to 10,000 samples per curve; use the results viewer for the complete CSV.
+
+Command references: [2400 manual](https://download.tek.com/manual/2400S-900-01_K-Sep2011_User.pdf)
+(sections 7, 13, 17 and 18), [2400 source auto-clear timing](https://www.tek.com/en/documents/application-note/can-i-generate-current-or-voltage-pulses-model-2400-or-other-non-pulse-mod),
+and [2700 manual](https://download.tek.com/manual/2700-900-01K_Feb_2016.pdf) (section 4).
 
 ### Verified 1 V discrepancy and correction
 
