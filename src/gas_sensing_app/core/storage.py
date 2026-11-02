@@ -25,6 +25,8 @@ class MeasurementCSV:
             "voltage_V",
             "current_A",
             "measurement_status",
+            "acquisition_started_elapsed_s",
+            "acquisition_duration_s",
             "resistance_range_mode",
             "resistance_range_requested_ohm",
             "resistance_range_actual_ohm",
@@ -55,9 +57,10 @@ class MeasurementCSV:
 
     def write_metadata(self, metadata):
         self.metadata_path = self.path.with_suffix(".metadata.json")
+        self.metadata = dict(schema_version=3, data_file=self.path.name, **metadata)
         with self.metadata_path.open("x", encoding="utf-8") as stream:
             json.dump(
-                dict(schema_version=2, data_file=self.path.name, **metadata),
+                self.metadata,
                 stream,
                 indent=2,
                 ensure_ascii=False,
@@ -66,6 +69,18 @@ class MeasurementCSV:
             stream.write("\n")
             stream.flush()
             os.fsync(stream.fileno())
+
+    def update_metadata(self, **changes):
+        """Commit sidecar updates atomically, preserving the last valid snapshot."""
+        metadata = dict(self.metadata, **changes)
+        temporary = self.metadata_path.with_suffix(".json.tmp")
+        with temporary.open("w", encoding="utf-8") as stream:
+            json.dump(metadata, stream, indent=2, ensure_ascii=False, allow_nan=False)
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, self.metadata_path)
+        self.metadata = metadata
 
     def write(self, row):
         self.writer.writerow(row)

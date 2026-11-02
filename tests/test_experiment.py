@@ -94,6 +94,13 @@ def test_live_range_applies_between_frames_and_is_saved(config):
             "manual",
         ]
         assert rows[-1]["resistance_range_actual_ohm"] == 100000
+        metadata = json.loads(
+            Path(engine.log_path).with_suffix(".metadata.json").read_text()
+        )
+        event = metadata["configuration_events"][-1]
+        assert event["applies_from_scan_id"] == 2
+        assert event["measurement_requested"]["manual_range"] == 100000
+        assert event["instrument_configuration"]["simulated"] is True
         with open(engine.log_path) as stream:
             saved = list(csv.DictReader(stream))
         assert saved[-1]["resistance_range_requested_ohm"] == "100000"
@@ -304,3 +311,106 @@ def test_disk_write_failure_stops_sources_and_keeps_prior_rows(config):
     assert not factory.devices["gate"].enabled
     assert not factory.devices["meter"].enabled
     assert factory.devices["mfc"].current_flows[1] == 15
+
+
+def test_pulse_off_interval_survives_stage_boundaries_and_stop(config, monkeypatch):
+    from unittest.mock import Mock
+
+    clock = [100.0]
+    monkeypatch.setattr("gas_sensing_app.core.engine.time.monotonic", lambda: clock[0])
+    engine = ExperimentEngine(
+        config,
+        MeasurementSettings(mode="constant_current", pulsed=True, interval_s=2),
+        GateSettings(),
+    )
+    engine.prepare()
+    original_read = engine.meter.read
+    starts = []
+
+    def read(channel):
+        starts.append(clock[0])
+        clock[0] += 0.3  # source delay plus acquisition; output is now off
+        return original_read(channel)
+
+    def wait(delay):
+        clock[0] += delay
+        return engine.cancel.is_set()
+
+    engine.meter.read = read
+    engine.cancel.wait = Mock(side_effect=wait)
+    try:
+        engine.acquire("first stage")
+        clock[0] += 0.2  # logging/gas/gate activity during the off interval
+        engine.acquire("second stage")
+        assert starts == [100.0, 102.3]
+        engine.cancel.wait.assert_any_call(pytest.approx(1.8))
+        engine.stop()
+        engine.acquire("stopped")
+        assert len(starts) == 2
+    finally:
+        engine.shutdown()
+
+
+def test_metadata_records_pulse_semantics_units_and_final_state(config):
+    settings = MeasurementSettings(
+        mode="constant_current",
+        source_current=0.5e-6,
+        voltage_compliance=2,
+        pulsed=True,
+        settling_s=0.02,
+        nplc=2,
+        source_auto_range=False,
+        source_current_range=1e-6,
+        voltage_auto_range=False,
+        voltage_range=2,
+    )
+    engine = ExperimentEngine(config, settings, GateSettings())
+    engine.prepare()
+    path = Path(engine.log_path).with_suffix(".metadata.json")
+    try:
+        metadata = json.loads(path.read_text())
+        assert metadata["schema_version"] == 3
+        assert metadata["session_state"] == "running"
+        assert metadata["measurement_initial"] == {
+            **metadata["measurement_initial"],
+            "source_current": 0.5e-6,
+            "voltage_compliance": 2,
+            "nplc": 2,
+            "settling_s": 0.02,
+            "source_current_range": 1e-6,
+            "voltage_auto_range": False,
+        }
+        details = metadata["measurement_details"]
+        assert details["units"]["source_current"] == "A"
+        assert details["active_source_level"] == {"value": 0.5e-6, "unit": "A"}
+        assert details["active_compliance"] == {"value": 2, "unit": "V"}
+        assert details["interval_semantics"] == "minimum previous-off to next-on"
+        assert details["output_mode"] == "pulsed"
+        assert metadata["instrument_configuration"]["simulated"] is True
+        engine.acquire("test")
+        engine.stop()
+    finally:
+        engine.shutdown()
+    metadata = json.loads(path.read_text())
+    assert metadata["session_state"] == "stopped"
+    assert metadata["ended_at_utc"]
+    assert metadata["errors"] == []
+    with open(engine.log_path) as stream:
+        row = next(csv.DictReader(stream))
+    assert float(row["acquisition_duration_s"]) >= 0
+    assert float(row["acquisition_started_elapsed_s"]) >= 0
+    assert row["resistance_range_mode"] == ""
+
+
+def test_metadata_updates_are_atomic_on_serialization_failure(config):
+    engine = ExperimentEngine(config, MeasurementSettings(), GateSettings())
+    engine.prepare()
+    try:
+        path = Path(engine.log_path).with_suffix(".metadata.json")
+        original = path.read_bytes()
+        with pytest.raises(ValueError):
+            engine.csv.update_metadata(invalid=float("nan"))
+        assert path.read_bytes() == original
+        assert "invalid" not in engine.csv.metadata
+    finally:
+        engine.shutdown()

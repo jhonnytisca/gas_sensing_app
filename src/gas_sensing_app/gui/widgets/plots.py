@@ -4,12 +4,14 @@ import importlib
 import math
 from collections import deque
 
+import numpy as np
 import pyqtgraph as pg
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import QSplitter
 
 from gas_sensing_app.gui.styles.theme_manager import DEFAULT_THEME, update_plot_theme
 from gas_sensing_app.gui.widgets.legend import ThickLineSample
+from gas_sensing_app.results import display_bounds
 
 
 class MeasurementPlots(QSplitter):
@@ -24,6 +26,9 @@ class MeasurementPlots(QSplitter):
         self.visibility_buttons = {}
         self.available = set()
         self.selected = {}
+        self.live = True
+        self.robust = True
+        self.live_window_s = 300.0
         for key, title, unit in (
             ("resistance_ohm", "Resistance", "Ω"),
             ("voltage_V", "Voltage", "V"),
@@ -47,6 +52,7 @@ class MeasurementPlots(QSplitter):
                 sampleType=ThickLineSample,
             )
             plot.setMinimumHeight(150)
+            plot.getViewBox().sigRangeChangedManually.connect(self.pause_live)
             self.plots[key] = plot
             self.selected[key] = True
             self.addWidget(plot)
@@ -64,7 +70,7 @@ class MeasurementPlots(QSplitter):
         self.curves.clear()
         self.history.clear()
         self.labels.clear()
-        self.fit()
+        self.resume_live()
 
     def set_measurement(self, instrument, mode):
         self.available = set(self.plots)
@@ -131,6 +137,51 @@ class MeasurementPlots(QSplitter):
             times.append(data["elapsed_s"])
             samples.append(value if value is not None else math.nan)
             self.curves[identity].setData(list(times), list(samples))
+        if self.live:
+            self.update_live()
+
+    def pause_live(self, *args):
+        self.live = False
+        for plot in self.plots.values():
+            plot.disableAutoRange()
+
+    def set_robust(self, enabled):
+        self.robust = enabled
+        self.fit_y()
+
+    def fit_y(self):
+        for key, plot in self.plots.items():
+            lo, hi = plot.viewRange()[0]
+            series = []
+            for (curve_key, label), (times, samples) in self.history.items():
+                if curve_key == key:
+                    times, samples = np.asarray(times), np.asarray(samples)
+                    series.append(
+                        (
+                            samples[(times >= lo) & (times <= hi)],
+                            label == "Gate setpoint" or key == "flows",
+                        )
+                    )
+            bounds = display_bounds(series, self.robust)
+            if bounds:
+                plot.setYRange(bounds[0], bounds[1], padding=0)
+
+    def update_live(self):
+        if not self.history:
+            return
+        latest = max(times[-1] for times, _ in self.history.values() if times)
+        earliest = min(times[0] for times, _ in self.history.values() if times)
+        lo = max(earliest, latest - self.live_window_s)
+        for plot in self.plots.values():
+            plot.setXRange(lo, max(latest, lo + 1), padding=0.01)
+        self.fit_y()
+
+    def resume_live(self):
+        self.live = True
+        self.robust = True
+        for plot in self.plots.values():
+            plot.disableAutoRange()
+        self.update_live()
 
     def curve_color(self, label):
         palette = importlib.import_module(
@@ -157,5 +208,12 @@ class MeasurementPlots(QSplitter):
             curve.setPen(self.curve_pen(label, self.curve_color(label)))
 
     def fit(self):
-        for plot in self.plots.values():
-            plot.enableAutoRange()
+        """Show every retained sample and its full amplitude; pause following."""
+        self.pause_live()
+        self.robust = False
+        if self.history:
+            earliest = min(times[0] for times, _ in self.history.values() if times)
+            latest = max(times[-1] for times, _ in self.history.values() if times)
+            for plot in self.plots.values():
+                plot.setXRange(earliest, max(latest, earliest + 1), padding=0.01)
+        self.fit_y()

@@ -10,6 +10,7 @@ from gas_sensing_app.config.config import load_failure_flows
 from gas_sensing_app.config.validation import finite, flows
 from gas_sensing_app.hardware.factory import HardwareFactory
 
+from .metadata import measurement_metadata
 from .storage import MeasurementCSV
 
 
@@ -44,6 +45,7 @@ class ExperimentEngine:
         self.errors = []
         self.started = 0
         self.scan_id = 0
+        self.next_pulse_at = 0.0
         self.operation = "preparing acquisition"
         self.active_gate = None
         self.stage_index = 0
@@ -126,6 +128,19 @@ class ExperimentEngine:
                 "created_at_utc": datetime.now(timezone.utc).isoformat(),
                 "elapsed_time_origin": "instrument preparation completed",
                 "measurement_initial": asdict(self.measurement),
+                "measurement_details": measurement_metadata(self.measurement),
+                "configuration_events": [],
+                "session_state": "preparing",
+                "instrument_configuration": None,
+                "acquisition_timing": {
+                    "acquisition_started_elapsed_s": (
+                        "host monotonic time immediately before READ?"
+                    ),
+                    "acquisition_duration_s": (
+                        "host READ? duration including communication and output-off "
+                        "confirmation; not exact pulse width"
+                    ),
+                },
                 "hardware": asdict(self.config.hardware),
                 "gate_initial": asdict(self.gate_settings),
                 "recipe": [asdict(stage) for stage in self.stages]
@@ -165,6 +180,12 @@ class ExperimentEngine:
         self.operation = f"configuring Keithley {self.measurement.instrument}"
         self.on_status(self.operation)
         self.meter.configure(self.measurement)
+        self.operation = "recording effective instrument configuration"
+        self.csv.update_metadata(
+            instrument_configuration=self.meter.configuration_snapshot(),
+            session_state="running",
+            acquisition_started_at_utc=datetime.now(timezone.utc).isoformat(),
+        )
         self.started = time.monotonic()
 
     def apply_flows(self, targets, shutter_open):
@@ -235,6 +256,8 @@ class ExperimentEngine:
     def acquire(self, stage_name):
         if self.cancel.is_set():
             return
+        if self.cancel.wait(max(0, self.next_pulse_at - time.monotonic())):
+            return
         self.scan_id += 1
         with self.lock:
             pending, self.pending_range = self.pending_range, None
@@ -242,6 +265,16 @@ class ExperimentEngine:
             self.operation = "changing 2700 resistance range"
             self.meter.set_resistance_range(pending)
             self.measurement = pending
+            events = self.csv.metadata["configuration_events"] + [
+                {
+                    "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+                    "elapsed_s": time.monotonic() - self.started,
+                    "applies_from_scan_id": self.scan_id,
+                    "measurement_requested": asdict(pending),
+                    "instrument_configuration": self.meter.configuration_snapshot(),
+                }
+            ]
+            self.csv.update_metadata(configuration_events=events)
             self.on_status(
                 "Resistance range applied: "
                 + ("Auto" if pending.auto_range else f"{pending.manual_range:g} Ω")
@@ -251,7 +284,11 @@ class ExperimentEngine:
             if self.cancel.is_set():
                 return
             self.operation = f"reading Keithley {settings.instrument}, channel {ch}"
+            read_started = time.monotonic()
             reading = self.meter.read(ch)
+            read_finished = time.monotonic()
+            if settings.instrument == "2400" and settings.pulsed:
+                self.next_pulse_at = read_finished + settings.interval_s
             timestamp = datetime.now(timezone.utc).isoformat(timespec="milliseconds")
             elapsed = time.monotonic() - self.started
             self.operation = "reading ROD-4 flows"
@@ -281,12 +318,14 @@ class ExperimentEngine:
                 "voltage_V": reading.voltage,
                 "current_A": reading.current,
                 "measurement_status": reading.status,
+                "acquisition_started_elapsed_s": read_started - self.started,
+                "acquisition_duration_s": read_finished - read_started,
                 "resistance_range_mode": ("auto" if settings.auto_range else "manual")
-                if settings.mode != "voltage"
+                if settings.mode == "resistance"
                 else None,
                 "resistance_range_requested_ohm": (
                     settings.manual_range
-                    if settings.mode != "voltage" and not settings.auto_range
+                    if settings.mode == "resistance" and not settings.auto_range
                     else None
                 ),
                 "resistance_range_actual_ohm": reading.resistance_range,
@@ -341,10 +380,11 @@ class ExperimentEngine:
                         ch, self.failure_flows.get(ch, 0.0)
                     ),
                 )
-        for name in ("gate", "meter", "shutter", "mfc", "csv"):
+        for name in ("gate", "meter", "shutter", "mfc"):
             device = getattr(self, name)
             if device:
                 attempt(f"close {name}", device.close)
+        self.finalize_metadata(attempt)
         self.on_status(
             "Failed — inspect errors"
             if self.errors
@@ -352,3 +392,22 @@ class ExperimentEngine:
             if self.cancel.is_set()
             else "Complete"
         )
+
+    def finalize_metadata(self, attempt):
+        if not self.csv:
+            return
+        if hasattr(self.csv, "metadata"):
+            attempt(
+                "final metadata",
+                lambda: self.csv.update_metadata(
+                    session_state="failed"
+                    if self.errors
+                    else "stopped"
+                    if self.cancel.is_set()
+                    else "complete",
+                    ended_at_utc=datetime.now(timezone.utc).isoformat(),
+                    errors=list(self.errors),
+                    measurement_final=asdict(self.measurement),
+                ),
+            )
+        attempt("close csv", self.csv.close)

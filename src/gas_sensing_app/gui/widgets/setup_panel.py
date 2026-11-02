@@ -75,6 +75,8 @@ class SetupPanel(QTabWidget):
         self.build_measurement()
         self.build_gases()
         self.build_gate()
+        # Keep the optional gate implementation available without exposing its tab.
+        self.setTabVisible(2, False)
         for widget in self.findChildren(QComboBox):
             widget.currentIndexChanged.connect(self.changed)
         for widget in self.findChildren(QAbstractSpinBox):
@@ -135,12 +137,76 @@ class SetupPanel(QTabWidget):
         ):
             widget.setRange(1, 20)
             widget.setValue(value)
-        self.bias = number(cfg.bias_voltage, -200, 200)
+        self.bias = number(cfg.bias_voltage, -210, 210)
         self.compliance = number(cfg.compliance, 1e-9, 1.05, 9)
         self.auto_range = QCheckBox("Choose resistance range automatically")
         self.auto_range.setChecked(cfg.auto_range)
         self.manual_range = number(cfg.manual_range, 1e-9, 1e12, 6)
         self.interval = number(cfg.interval_s, 0.01, 86400, 2)
+        self.extra_inputs = {}
+        for key, label, minimum, maximum, decimals, scale in (
+            ("source_current", "Applied current (µA)", -1.05e6, 1.05e6, 6, 1e6),
+            ("voltage_compliance", "Voltage limit (V)", 0.0002, 210, 4, 1),
+            ("source_voltage_range", "Source voltage range (V)", 0.2, 200, 3, 1),
+            ("source_current_range", "Source current range (µA)", 1, 1e6, 3, 1e6),
+            ("voltage_range", "Measured voltage range (V)", 0.1, 1000, 3, 1),
+            ("current_range", "Measured current range (µA)", 1, 1e6, 3, 1e6),
+            ("settling_s", "Source settling delay (s)", 0, 60, 3, 1),
+            ("nplc", "Integration time (NPLC)", 0.01, 50, 2, 1),
+        ):
+            widget = number(getattr(cfg, key) * scale, minimum, maximum, decimals)
+            widget.setAccessibleName(label)
+            self.extra_inputs[key] = (widget, scale)
+        self.extra_checks = {}
+        for key, label in (
+            ("source_auto_range", "Automatic source range"),
+            ("voltage_auto_range", "Voltage sense autorange"),
+            ("current_auto_range", "Current sense autorange"),
+            ("pulsed", "Pulse output"),
+        ):
+            widget = QCheckBox(label)
+            widget.setChecked(getattr(cfg, key))
+            widget.toggled.connect(self.changed)
+            widget.toggled.connect(self.topology_changed)
+            self.extra_checks[key] = widget
+        self.extra_checks["pulsed"].setToolTip(
+            "Source on → settling delay → measurement → high-impedance off. "
+            "The interval sets the pause from previous off to next on."
+        )
+        self.extra_inputs["source_current"][0].setToolTip(
+            "Commanded test current in µA. 0.5 µA = 0.0000005 A. "
+            "Voltage compliance can reduce the actual current."
+        )
+        self.extra_inputs["voltage_compliance"][0].setToolTip(
+            "Maximum voltage during fixed-current sourcing. At 0.5 µA and 2 V, "
+            "the requested current can be maintained only up to about 4 MΩ. "
+            "Above that, current is reduced to respect this limit."
+        )
+        self.extra_inputs["nplc"][0].setToolTip(
+            "NPLC = number of power-line cycles integrated per conversion. "
+            "Default 1 balances speed and noise rejection (20 ms at 50 Hz; "
+            "16.7 ms at 60 Hz per conversion). Lower = faster, noisier. "
+            "Higher = slower, more averaging; whole cycles reject line noise. "
+            "Pulses stay on longer at higher NPLC. Autoranging, autozero and "
+            "concurrent measurements add time. 2400: 0.01–10; 2700: 0.01–50."
+        )
+        self.extra_inputs["settling_s"][0].setToolTip(
+            "Delay after applying the source and before acquisition. Default 10 ms "
+            "is a starting point; increase if sensor/cable capacitance needs more "
+            "settling. Actual on-time also includes integration and overhead."
+        )
+        for key in (
+            "source_voltage_range",
+            "source_current_range",
+            "voltage_range",
+            "current_range",
+        ):
+            self.extra_inputs[key][0].setToolTip(
+                "Requested range capacity. Instrument selects the smallest supported "
+                "range that accommodates this value. Source and same-quantity "
+                "measurement ranges track each other on the 2400. A manual sense "
+                "range can limit achievable compliance."
+            )
         self.apply_range_btn = QPushButton("Apply range to next scan")
         self.apply_range_btn.setEnabled(False)
         for label, widget in (
@@ -158,6 +224,25 @@ class SetupPanel(QTabWidget):
         ):
             form.addRow(label, widget)
             widget.setAccessibleName(label)
+        for key in (
+            "source_current",
+            "voltage_compliance",
+            "source_auto_range",
+            "source_voltage_range",
+            "source_current_range",
+            "voltage_auto_range",
+            "voltage_range",
+            "current_auto_range",
+            "current_range",
+            "pulsed",
+            "settling_s",
+            "nplc",
+        ):
+            if key in self.extra_checks:
+                form.addRow(self.extra_checks[key])
+            else:
+                widget, _ = self.extra_inputs[key]
+                form.addRow(widget.accessibleName(), widget)
         self.interval.setToolTip(
             "Target interval between sensor scans. Instrument readout may take longer."
         )
@@ -174,9 +259,6 @@ class SetupPanel(QTabWidget):
             "2400 source voltage in fixed-voltage mode. The current limit may "
             "reduce the actual voltage. Independent of the gate supply."
         )
-        self.capability_note = hint("")
-        self.capability_note.setObjectName("infoNote")
-        form.addRow(self.capability_note)
         next_button = QPushButton("Next: choose gas flows →")
         next_button.clicked.connect(lambda: self.setCurrentIndex(1))
         form.addRow(next_button)
@@ -276,14 +358,17 @@ class SetupPanel(QTabWidget):
         self.measurement_mode.blockSignals(True)
         self.measurement_mode.clear()
         self.measurement_mode.addItem(
-            "Resistance · automatic test current"
+            "Automatic ohms"
             if self.instrument.currentData() == "2400"
             else "Resistance",
             "resistance",
         )
         if self.instrument.currentData() == "2400":
             self.measurement_mode.addItem(
-                "Resistance, voltage & current · fixed voltage", "constant_voltage"
+                "Fixed voltage · R, V & I", "constant_voltage"
+            )
+            self.measurement_mode.addItem(
+                "Fixed current · R, V & I", "constant_current"
             )
         else:
             self.measurement_mode.addItem("Voltage", "voltage")
@@ -291,8 +376,57 @@ class SetupPanel(QTabWidget):
         self.topology_changed()
         self.changed.emit()
 
-    def topology_changed(self):
+    def update_source_controls(self):
         mux = self.instrument.currentData() == "2700"
+        mode = self.measurement_mode.currentData()
+        if not mode:
+            return
+        fixed = not mux and mode in ("constant_voltage", "constant_current")
+        current_source = mode == "constant_current"
+        checks = self.extra_checks
+        inputs = self.extra_inputs
+        visible_inputs = {"nplc"}
+        if fixed:
+            if current_source:
+                visible_inputs.update(("source_current", "voltage_compliance"))
+            if not checks["source_auto_range"].isChecked():
+                visible_inputs.add(
+                    "source_current_range" if current_source else "source_voltage_range"
+                )
+        sense_voltage = (mux and mode == "voltage") or (fixed and current_source)
+        sense_current = fixed and not current_source
+        if sense_voltage and not checks["voltage_auto_range"].isChecked():
+            visible_inputs.add("voltage_range")
+        if sense_current and not checks["current_auto_range"].isChecked():
+            visible_inputs.add("current_range")
+        if not mux:
+            visible_inputs.add("settling_s")
+        for key, (widget, _) in inputs.items():
+            self.measurement_form.setRowVisible(widget, key in visible_inputs)
+        for key, visible in (
+            ("source_auto_range", fixed),
+            ("voltage_auto_range", sense_voltage),
+            ("current_auto_range", sense_current),
+            ("pulsed", not mux),
+        ):
+            self.measurement_form.setRowVisible(checks[key], visible)
+        inputs["nplc"][0].setMaximum(50 if mux else 10)
+        inputs["voltage_range"][0].setRange(0.1 if mux else 0.2, 1000 if mux else 200)
+        pulsed = not mux and checks["pulsed"].isChecked()
+        self.measurement_form.labelForField(self.interval).setText(
+            "Off time between pulses (s)" if pulsed else "Read every (s)"
+        )
+        self.interval.setToolTip(
+            "Minimum time from previous output off to next output on. "
+            "Flow readback, logging and gate operations can extend this interval."
+            if pulsed
+            else "Target interval between scans; readout may take longer."
+        )
+
+    def topology_changed(self):
+        self.update_source_controls()
+        mux = self.instrument.currentData() == "2700"
+        fixed = not mux and self.measurement_mode.currentData() != "resistance"
         voltage = self.measurement_mode.currentData() == "voltage"
         if mux and voltage:
             self.wires.setCurrentIndex(0)
@@ -305,30 +439,14 @@ class SetupPanel(QTabWidget):
         for widget in (self.first_channel, self.last_channel):
             widget.setMaximum(10 if four else 20)
         bias = not mux and self.measurement_mode.currentData() == "constant_voltage"
-        for widget in (self.bias, self.compliance):
-            self.measurement_form.setRowVisible(widget, bias)
-        self.measurement_form.setRowVisible(self.auto_range, not voltage)
+        self.measurement_form.setRowVisible(self.bias, bias)
+        self.measurement_form.setRowVisible(self.compliance, bias)
+        self.measurement_form.setRowVisible(self.auto_range, not voltage and not fixed)
         self.measurement_form.setRowVisible(
-            self.manual_range, not voltage and not self.auto_range.isChecked()
+            self.manual_range,
+            not voltage and not fixed and not self.auto_range.isChecked(),
         )
         self.measurement_form.setRowVisible(self.apply_range_btn, mux and not voltage)
-        self.capability_note.setText(
-            "The 7706 cannot measure current directly. "
-            "Empty readings mean unavailable, not zero. "
-            + (
-                "Four-terminal sensors use paired channels, e.g. 101 + 111."
-                if four
-                else "Each sensor uses one H/L channel."
-            )
-            if mux
-            else (
-                "The 2400 applies your voltage with the selected current limit "
-                "and returns resistance, voltage and current."
-                if bias
-                else "The 2400 chooses the test current automatically. Select fixed "
-                "voltage above to control the applied voltage."
-            )
-        )
 
     def set_running(self, running):
         self.running = running
@@ -343,6 +461,10 @@ class SetupPanel(QTabWidget):
             self.compliance,
             self.interval,
         ):
+            widget.setEnabled(not running)
+        for widget, _ in self.extra_inputs.values():
+            widget.setEnabled(not running)
+        for widget in self.extra_checks.values():
             widget.setEnabled(not running)
         live_range = (
             self.instrument.currentData() == "2700"
@@ -391,6 +513,11 @@ class SetupPanel(QTabWidget):
             auto_range=self.auto_range.isChecked(),
             manual_range=self.manual_range.value(),
             interval_s=self.interval.value(),
+            **{
+                key: widget.value() / scale
+                for key, (widget, scale) in self.extra_inputs.items()
+            },
+            **{key: widget.isChecked() for key, widget in self.extra_checks.items()},
         )
         gate = replace(
             self.config.gate,

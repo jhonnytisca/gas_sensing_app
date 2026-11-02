@@ -12,7 +12,7 @@ class MockKeithley2400:
 
     def configure(self, settings):
         self.settings = settings
-        self.enabled = True
+        self.enabled = not settings.pulsed
 
     def read(self, channel=None):
         self.tick += 1
@@ -22,8 +22,26 @@ class MockKeithley2400:
             if self.settings.mode == "constant_voltage"
             else 0.1
         )
+        if self.settings.mode == "constant_current":
+            voltage = max(
+                -self.settings.voltage_compliance,
+                min(
+                    self.settings.voltage_compliance,
+                    self.settings.source_current * resistance,
+                ),
+            )
         current = voltage / resistance
         return Reading(resistance, voltage, current, "simulated")
+
+    def configuration_snapshot(self):
+        from dataclasses import asdict
+
+        return {
+            "simulated": True,
+            "identity": f"Mock Keithley {self.settings.instrument}",
+            "simulated_settings": asdict(self.settings),
+            "note": "No physical instrument readback",
+        }
 
     def output_off(self):
         self.enabled = False

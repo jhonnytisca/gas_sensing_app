@@ -97,7 +97,7 @@ def test_fixed_voltage_and_resistance_range_controls(qtbot, tmp_path):
     setup.bias.setValue(0.5)
     setup.compliance.setValue(0.0001)
     setup.auto_range.setChecked(False)
-    assert not setup.manual_range.isHidden()
+    assert setup.manual_range.isHidden()  # Manual ohms uses source/sense ranges.
     setup.manual_range.setValue(2000000)
     measurement, _ = setup.settings()
     assert measurement.bias_voltage == 0.5
@@ -108,7 +108,6 @@ def test_fixed_voltage_and_resistance_range_controls(qtbot, tmp_path):
     assert setup.manual_range.isHidden()
     setup.measurement_mode.setCurrentIndex(0)
     assert setup.bias.isHidden()
-    assert "automatically" in setup.capability_note.text()
     setup.instrument.setCurrentIndex(1)
     assert setup.bias.isHidden()
     assert not setup.auto_range.isHidden()
@@ -199,3 +198,61 @@ def test_2700_live_range_and_plot_visibility(qtbot, tmp_path):
         controller.stop()
         qtbot.waitUntil(lambda: controller.worker is None, timeout=3000)
         controller.close_log()
+
+
+def test_fixed_current_controls_roundtrip(qtbot, tmp_path):
+    window, controller = make_window(qtbot, tmp_path)
+    setup = window.setup
+    setup.measurement_mode.setCurrentIndex(
+        setup.measurement_mode.findData("constant_current")
+    )
+    assert not setup.extra_inputs["source_current"][0].isHidden()
+    assert setup.extra_inputs["source_current"][0].value() == 0.5
+    assert setup.extra_inputs["voltage_compliance"][0].value() == 2
+    setup.extra_checks["pulsed"].setChecked(True)
+    setup.extra_checks["source_auto_range"].setChecked(False)
+    setup.extra_checks["voltage_auto_range"].setChecked(False)
+    assert not setup.extra_inputs["source_current_range"][0].isHidden()
+    assert not setup.extra_inputs["voltage_range"][0].isHidden()
+    assert setup.extra_checks["current_auto_range"].isHidden()
+    assert "Off time" in setup.measurement_form.labelForField(setup.interval).text()
+    measurement, _ = setup.settings()
+    assert measurement.source_current == 0.5e-6
+    assert measurement.pulsed and measurement.voltage_compliance == 2
+    setup.set_running(True)
+    assert not setup.extra_inputs["source_current"][0].isEnabled()
+    assert not setup.extra_checks["pulsed"].isEnabled()
+    controller.close_log()
+
+
+def test_live_plot_spikes_zoom_and_resume(qtbot):
+    from gas_sensing_app.gui.widgets.plots import MeasurementPlots
+
+    plots = MeasurementPlots({1: "gas"})
+    qtbot.addWidget(plots)
+    plots.show()
+    for i in range(1001):
+        plots.append(
+            {
+                "device": "single",
+                "elapsed_s": i,
+                "resistance_ohm": 1e9 if i == 900 else 1000,
+                "voltage_V": 1,
+                "current_A": 1e-6,
+                "flows": {1: 10},
+                "gate_setpoint_V": None,
+            }
+        )
+    assert plots.plots["resistance_ohm"].viewRange()[1][1] < 1e6
+    assert plots.plots["resistance_ohm"].viewRange()[0][0] > 600
+    plots.plots["resistance_ohm"].getViewBox().sigRangeChangedManually.emit(
+        [True, True]
+    )
+    assert not plots.live
+    plots.fit()
+    assert plots.plots["resistance_ohm"].viewRange()[1][1] > 1e9
+    assert plots.plots["resistance_ohm"].viewRange()[0][0] <= 0
+    plots.resume_live()
+    assert plots.live and plots.robust
+    assert plots.plots["resistance_ohm"].viewRange()[1][1] < 1e6
+    assert max(plots.history[("resistance_ohm", "single")][1]) == 1e9
