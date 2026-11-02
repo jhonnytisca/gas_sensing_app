@@ -27,6 +27,7 @@ class MeasurementPlots(QSplitter):
         self.available = set()
         self.selected = {}
         self.live = True
+        self.full_history = False
         self.robust = True
         self.live_window_s = 300.0
         for key, title, unit in (
@@ -171,13 +172,18 @@ class MeasurementPlots(QSplitter):
             return
         latest = max(times[-1] for times, _ in self.history.values() if times)
         earliest = min(times[0] for times, _ in self.history.values() if times)
-        lo = max(earliest, latest - self.live_window_s)
+        lo = (
+            earliest
+            if self.full_history
+            else max(earliest, latest - self.live_window_s)
+        )
         for plot in self.plots.values():
             plot.setXRange(lo, max(latest, lo + 1), padding=0.01)
         self.fit_y()
 
     def resume_live(self):
         self.live = True
+        self.full_history = False
         self.robust = True
         for plot in self.plots.values():
             plot.disableAutoRange()
@@ -208,12 +214,10 @@ class MeasurementPlots(QSplitter):
             curve.setPen(self.curve_pen(label, self.curve_color(label)))
 
     def fit(self):
-        """Show every retained sample and its full amplitude; pause following."""
-        self.pause_live()
+        """Follow all retained history, including new samples and full amplitude."""
+        self.live = True
+        self.full_history = True
         self.robust = False
-        if self.history:
-            earliest = min(times[0] for times, _ in self.history.values() if times)
-            latest = max(times[-1] for times, _ in self.history.values() if times)
-            for plot in self.plots.values():
-                plot.setXRange(earliest, max(latest, earliest + 1), padding=0.01)
-        self.fit_y()
+        for plot in self.plots.values():
+            plot.disableAutoRange()
+        self.update_live()

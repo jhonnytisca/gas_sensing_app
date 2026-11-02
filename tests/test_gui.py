@@ -252,7 +252,199 @@ def test_live_plot_spikes_zoom_and_resume(qtbot):
     plots.fit()
     assert plots.plots["resistance_ohm"].viewRange()[1][1] > 1e9
     assert plots.plots["resistance_ohm"].viewRange()[0][0] <= 0
+    plots.append(
+        {
+            "device": "single",
+            "elapsed_s": 1200,
+            "resistance_ohm": 1000,
+            "voltage_V": 1,
+            "current_A": 1e-6,
+            "flows": {1: 10},
+            "gate_setpoint_V": None,
+        }
+    )
+    assert plots.plots["resistance_ohm"].viewRange()[0][0] <= 0
+    assert plots.plots["resistance_ohm"].viewRange()[0][1] >= 1200
+    plots.pause_live()
+    paused = plots.plots["resistance_ohm"].viewRange()
+    plots.append(
+        {
+            "device": "single",
+            "elapsed_s": 1500,
+            "resistance_ohm": 1000,
+            "voltage_V": 1,
+            "current_A": 1e-6,
+            "flows": {1: 10},
+            "gate_setpoint_V": None,
+        }
+    )
+    assert plots.plots["resistance_ohm"].viewRange() == paused
     plots.resume_live()
     assert plots.live and plots.robust
     assert plots.plots["resistance_ohm"].viewRange()[1][1] < 1e6
     assert max(plots.history[("resistance_ohm", "single")][1]) == 1e9
+
+
+def test_load_save_profile_replaces_form_and_preserves_local_ports(qtbot, tmp_path):
+    window, controller = make_window(qtbot, tmp_path)
+    window.config.hardware.keithley_2400.port = "ASRL9::INSTR"
+    setup = window.setup
+    setup.measurement_mode.setCurrentIndex(
+        setup.measurement_mode.findData("constant_current")
+    )
+    setup.extra_inputs["settling_s"][0].setValue(0.02)
+    setup.extra_inputs["voltage_compliance"][0].setValue(7)
+    setup.extra_checks["pulsed"].setChecked(True)
+    setup.flow_inputs[1].setValue(42)
+    recipe = tmp_path / "recipe.yaml"
+    recipe.write_text("steps: [{name: Gas, duration: 1, mfc_flows: {1: 10}}]")
+    controller.load_recipe_file(str(recipe))
+    setup.control_tabs.setCurrentIndex(1)
+    profile = tmp_path / "saved.yaml"
+    assert controller.save_configuration_file(profile)
+    setup.extra_inputs["voltage_compliance"][0].setValue(2)
+    assert controller.load_configuration_file(profile)
+    assert window.setup is not setup
+    assert window.setup.extra_inputs["voltage_compliance"][0].value() == 7
+    assert window.setup.extra_inputs["settling_s"][0].value() == 0.02
+    assert window.setup.flow_inputs[1].value() == 42
+    assert window.config.hardware.keithley_2400.port == "ASRL9::INSTR"
+    assert window.setup.control_tabs.currentIndex() == 1
+    assert "Gas" in window.setup.recipe_preview.text()
+    assert window.start_recipe_btn.isEnabled()
+    # New form controls are reconnected, including recipe/range behavior.
+    window.setup.control_tabs.setCurrentIndex(0)
+    assert window.start_manual_btn.isVisible()
+    assert not window.setup.isTabVisible(2)
+    good_setup = window.setup
+    profile.write_text("configuration_version: 200")
+    assert not controller.load_configuration_file(profile)
+    assert window.setup is good_setup
+    assert "Configuration not loaded" in window.status_label.text()
+    window.details_dialog.close()
+    controller.close_log()
+
+
+def test_connection_dialog_discovery_manual_addresses_and_cancel(
+    qtbot, tmp_path, monkeypatch
+):
+    from gas_sensing_app.gui.connections_dialog import ConnectionsDialog
+
+    window, controller = make_window(qtbot, tmp_path)
+    monkeypatch.setattr(
+        "gas_sensing_app.gui.connections_dialog.scan_resources",
+        lambda: {
+            "serial": [{"device": "COM7", "description": "USB adapter", "hwid": "123"}],
+            "visa": ["ASRL7::INSTR"],
+            "error": None,
+        },
+    )
+    dialog = ConnectionsDialog(window.config, window.config.measurement, window)
+    qtbot.addWidget(dialog)
+    dialog.show()
+    qtbot.waitUntil(lambda: "Discovery complete" in dialog.status.text())
+    qtbot.waitUntil(lambda: dialog.worker is None)
+    assert window.config.hardware.keithley_2400.port == ""
+    box = dialog.ports["keithley_2400"]
+    box.setCurrentIndex(box.findData("ASRL7::INSTR"))
+    assert dialog.port_value(box) == "ASRL7::INSTR"
+    dialog.simulated.setChecked(False)
+    dialog.shutter_enabled.setChecked(False)
+    dialog.validate_and_accept()
+    assert "MFC" in dialog.status.text().upper()
+    dialog.ports["mfc_controller"].setEditText("COM8")
+    dialog.validate_and_accept()
+    assert dialog.config.hardware.mfc_controller.port == "ASRL8::INSTR"
+    # No changes leak from the dialog until controller persistence succeeds.
+    assert window.config.hardware.mfc_controller.port == ""
+    controller.close_log()
+
+
+def test_profile_buttons_disabled_during_acquisition(qtbot, tmp_path):
+    import json
+
+    window, controller = make_window(qtbot, tmp_path)
+    profile = tmp_path / "experiment.yaml"
+    assert controller.save_configuration_file(profile)
+    window.setup.interval.setValue(0.02)
+    controller.start("manual")
+    worker = controller.worker
+    try:
+        qtbot.waitUntil(lambda: bool(window.plots.history), timeout=3000)
+        assert not window.load_config_btn.isEnabled()
+        assert not window.connections_btn.isEnabled()
+        assert not controller.load_configuration_file(profile)
+    finally:
+        controller.stop()
+        qtbot.waitUntil(lambda: controller.worker is None, timeout=3000)
+        controller.close_log()
+    assert window.load_config_btn.isEnabled() and window.connections_btn.isEnabled()
+    metadata = json.loads(
+        Path(worker.engine.log_path).with_suffix(".metadata.json").read_text()
+    )
+    assert metadata["configuration_source"]["name"] == "experiment.yaml"
+    assert metadata["configuration_source"]["sha256"]
+    assert metadata["resolved_connections"]["keithley_2400"]["port"] == ""
+
+
+def test_missing_real_ports_prompt_before_creating_worker(qtbot, tmp_path, monkeypatch):
+    from unittest.mock import Mock
+
+    window, controller = make_window(qtbot, tmp_path)
+    window.config.hardware.use_mock = False
+    prompt = Mock(return_value=False)
+    monkeypatch.setattr(controller, "configure_devices", prompt)
+    controller.start("manual")
+    prompt.assert_called_once()
+    assert controller.worker is None
+    assert not window.running
+    controller.close_log()
+
+
+def test_sample_notes_profile_and_metadata_only(qtbot, tmp_path):
+    import json
+
+    window, controller = make_window(qtbot, tmp_path)
+    panel = window.sample_notes
+    assert panel.body.isHidden()
+    panel.toggle.click()
+    label = "SnO₂ · sample B / device 03"
+    notes = (
+        "Prepared yesterday.\nSpecial condition: 20 ms settling.\n"
+        "Gas response observation."
+    )
+    panel.sample_label.setText(label)
+    panel.experiment_notes.setPlainText(notes)
+    profile = tmp_path / "sample.yaml"
+    assert controller.save_configuration_file(profile)
+    panel.sample_label.clear()
+    assert controller.load_configuration_file(profile)
+    panel = window.sample_notes
+    assert panel.body.isHidden()
+    assert panel.values() == {"sample_label": label, "experiment_notes": notes}
+    window.setup.interval.setValue(0.02)
+    controller.start("manual")
+    worker = controller.worker
+    try:
+        qtbot.waitUntil(lambda: bool(window.plots.history), timeout=3000)
+        assert panel.sample_label.isReadOnly()
+        assert panel.experiment_notes.isReadOnly()
+    finally:
+        controller.stop()
+        qtbot.waitUntil(lambda: controller.worker is None, timeout=3000)
+        controller.close_log()
+    assert not panel.sample_label.isReadOnly()
+    assert not panel.experiment_notes.isReadOnly()
+    panel.experiment_notes.setPlainText("Notes for the next experiment")
+    metadata = json.loads(
+        Path(worker.engine.log_path).with_suffix(".metadata.json").read_text()
+    )
+    assert metadata["sample_label"] == label
+    assert metadata["experiment_notes"] == notes
+    with open(worker.engine.log_path) as stream:
+        reader = csv.DictReader(stream)
+        assert "sample_label" not in reader.fieldnames
+        assert "experiment_notes" not in reader.fieldnames
+        assert list(reader)
+    content = Path(worker.engine.log_path).read_text()
+    assert label not in content and "Prepared yesterday" not in content

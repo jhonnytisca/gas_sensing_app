@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 @dataclass
 class Keithley2400Config:
     port: str = "GPIB0::24::INSTR"
+    baud_rate: int = 9600
+    read_termination: str = "\r"
     auto_range: bool = True
     manual_range: float = 200000.0
     four_wire: bool = False
@@ -240,3 +242,11 @@ class AppConfig:
     gate: GateSettings = field(default_factory=GateSettings)
     safety_file: str = "failure_gases.yaml"
     base_dir: str = "."
+    manual_flows: dict[int, float] = field(default_factory=dict)
+    manual_shutter_open: bool = False
+    acquisition_mode: str = "manual"
+    recipe_file: str | None = None
+    shutdown_flows: dict[int, float] | None = None
+    configuration_source: dict = field(default_factory=dict)
+    sample_label: str = ""
+    experiment_notes: str = ""

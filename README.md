@@ -4,6 +4,17 @@ A PyQt6 application for gas sensor acquisition. Configuration, instrument driver
 experiment sequencing, storage, and the user interface are separate modules.
 Mock devices support development and testing without connected instruments.
 
+## Experiment configurations and device ports
+
+Use **Load config**, **Save config**, and **Devices** beside **Results** in the top
+panel. Saved YAML configurations include measurement and gas settings, logging
+preferences and shutdown flows. A selected recipe is copied beside the YAML;
+transfer both files together. Ports and serial transport settings stay in each
+computer's local application settings and can be selected or entered in **Devices**.
+Loading never starts an experiment. See the
+[configuration workflow](src/gas_sensing_app/assets/manual/operator-guide.md#save-and-load-experiment-configurations)
+for details.
+
 ## Operator guide
 
 See the [Operator guide](src/gas_sensing_app/assets/manual/operator-guide.md) for

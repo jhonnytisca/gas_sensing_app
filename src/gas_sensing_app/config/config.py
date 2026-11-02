@@ -28,7 +28,19 @@ class Config:
             data = yaml.safe_load(stream)
         if not isinstance(data, dict):
             raise ValueError("Configuration must be a YAML mapping")
+        version = data.get("configuration_version")
+        if version is not None and (type(version) is not int or version != 1):
+            raise ValueError("Unsupported configuration version")
         hw = data.get("hardware", {})
+        if version == 1:
+            hw = {**hw}
+            for device in (
+                "keithley_2400",
+                "keithley_2700",
+                "mfc_controller",
+                "shutter",
+            ):
+                hw[device] = {**hw.get(device, {}), "port": ""}
         mock = hw.get("use_mock", True)
         if not isinstance(mock, bool):
             raise ValueError("hardware.use_mock must be true or false")
@@ -69,6 +81,10 @@ class Config:
             safety_file=data.get("safety_file", "failure_gases.yaml"),
             base_dir=str(self.path.parent),
         )
+        self.load_experiment(result, data, version)
+        from .profiles import source_info
+
+        result.configuration_source = source_info(self.path)
         result.measurement.validate()
         result.gate.points()
         if (
@@ -78,8 +94,47 @@ class Config:
             raise ValueError("CSV prefix must be a filename, not a path")
         return result
 
+    def load_experiment(self, result, data, version):
+        experiment = data.get("experiment", {})
+        if not isinstance(experiment, dict):
+            raise ValueError("experiment must be a mapping")
+        self.load_annotations(result, experiment)
+        result.manual_flows = flows(
+            experiment.get("manual_flows_sccm", {}),
+            result.hardware.mfc_controller.range_sccm,
+        )
+        result.manual_shutter_open = experiment.get("manual_shutter_open", False)
+        if not isinstance(result.manual_shutter_open, bool):
+            raise ValueError("manual_shutter_open must be true or false")
+        result.acquisition_mode = experiment.get("mode", "manual")
+        if result.acquisition_mode not in ("manual", "recipe"):
+            raise ValueError("Experiment mode must be manual or recipe")
+        recipe = experiment.get("recipe_file")
+        if recipe is not None:
+            if not isinstance(recipe, str) or not recipe.strip():
+                raise ValueError("recipe_file must be a path")
+            result.recipe_file = str((self.path.parent / recipe).resolve())
+        if result.acquisition_mode == "recipe" and not result.recipe_file:
+            raise ValueError("Recipe mode requires a recipe file")
+        if "shutdown_flows_sccm" in data:
+            result.shutdown_flows = flows(
+                data["shutdown_flows_sccm"], result.hardware.mfc_controller.range_sccm
+            )
+        if version == 1 and result.shutdown_flows is None:
+            raise ValueError("Portable configurations require shutdown_flows_sccm")
+
+    @staticmethod
+    def load_annotations(result, experiment):
+        for key in ("sample_label", "experiment_notes"):
+            value = experiment.get(key, "")
+            if not isinstance(value, str):
+                raise ValueError(f"{key} must be text")
+            setattr(result, key, value)
+
 
 def load_failure_flows(config):
+    if config.shutdown_flows is not None:
+        return flows(config.shutdown_flows, config.hardware.mfc_controller.range_sccm)
     path = Path(config.base_dir) / config.safety_file
     with path.open(encoding="utf-8") as stream:
         data = yaml.safe_load(stream)

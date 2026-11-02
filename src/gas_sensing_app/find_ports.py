@@ -12,12 +12,15 @@ def visa_address(port):
     return f"ASRL{port[3:] if port.upper().startswith('COM') else port}::INSTR"
 
 
-def discover():
+def scan_resources():
+    """Return port candidates without opening any instrument or serial port."""
     ports = sorted(list_ports.comports())
-    serial_ports = [port.device for port in ports]
-    resources = [visa_address(port) for port in serial_ports]
-    for port in ports:
-        print(f"{port.device}: {port.description} ({port.hwid})")
+    serial = [
+        {"device": port.device, "description": port.description, "hwid": port.hwid}
+        for port in ports
+    ]
+    resources = [visa_address(port.device) for port in ports]
+    error = None
     try:
         manager = pyvisa.ResourceManager()
         try:
@@ -25,14 +28,22 @@ def discover():
         finally:
             manager.close()
     except Exception as exc:
-        print(f"VISA discovery unavailable: {exc}")
-    resources = sorted(set(resources))
+        error = f"VISA discovery unavailable: {exc}"
+    return {"serial": serial, "visa": sorted(set(resources)), "error": error}
+
+
+def discover():
+    found = scan_resources()
+    for port in found["serial"]:
+        print(f"{port['device']}: {port['description']} ({port['hwid']})")
+    if found["error"]:
+        print(found["error"])
     print("\nVISA addresses (discovery does not confirm a responding instrument):")
-    for resource in resources:
+    for resource in found["visa"]:
         print(f"  {resource}")
-    if not serial_ports and not resources:
+    if not found["serial"] and not found["visa"]:
         print("No ports found. Check cables and drivers on the lab computer.")
-    return serial_ports, resources
+    return [port["device"] for port in found["serial"]], found["visa"]
 
 
 def select(label, addresses):

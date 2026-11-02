@@ -24,6 +24,7 @@ from PyQt6.QtWidgets import (
 from gas_sensing_app.gui.styles.theme_manager import DEFAULT_THEME, load_theme
 
 from .widgets.plots import MeasurementPlots
+from .widgets.sample_notes import SampleNotes
 from .widgets.setup_panel import SetupPanel, hint
 from .widgets.theme_selector import ThemeSelector
 
@@ -70,7 +71,7 @@ class Dashboard(QMainWindow):
         self.splitter.addWidget(self.setup_column)
         self.splitter.addWidget(self.monitor_view)
         self.splitter.setSizes([440, 960])
-        outer.addWidget(self.build_details())
+        self.build_details()
         self.setup.changed.connect(self.refresh_summary)
         self.setup.changed.connect(self.update_plot_availability)
         self.update_plot_availability()
@@ -84,32 +85,136 @@ class Dashboard(QMainWindow):
 
     def build_header(self):
         header = QWidget()
-        layout = QHBoxLayout(header)
-        layout.setContentsMargins(0, 0, 0, 0)
+        self.header_layout = QVBoxLayout(header)
+        self.header_layout.setContentsMargins(0, 0, 0, 0)
+        layout = QHBoxLayout()
+        self.header_top = layout
+        self.header_layout.addLayout(layout)
         title = QLabel("Gas Sensing")
         title.setObjectName("pageTitle")
         layout.addWidget(title)
-        mode = QLabel(
-            "SIMULATION" if self.config.hardware.use_mock else "REAL INSTRUMENTS"
-        )
-        mode.setObjectName("modeBadge")
-        mode.setToolTip(
-            "Mock devices · no physical outputs"
-            if self.config.hardware.use_mock
-            else "This session controls connected laboratory instruments"
-        )
-        layout.addWidget(mode)
+        self.mode_badge = QLabel()
+        self.mode_badge.setObjectName("modeBadge")
+        self.refresh_mode_badge()
+        layout.addWidget(self.mode_badge)
         layout.addStretch()
         self.theme_selector = ThemeSelector()
-        self.preview_results_btn = QToolButton()
-        self.preview_results_btn.setText("Results")
-        self.preview_results_btn.setToolTip(
-            "Open results previewer in a separate process"
+        self.header_tools = QWidget()
+        self.header_tools.setSizePolicy(
+            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred
         )
+        tools = QHBoxLayout(self.header_tools)
+        self.header_tools_layout = tools
+        tools.setContentsMargins(0, 0, 0, 0)
+        self.configuration_tools = QWidget()
+        self.session_tools = QWidget()
+        configuration = QHBoxLayout(self.configuration_tools)
+        navigation = QHBoxLayout(self.session_tools)
+        for group in (configuration, navigation):
+            group.parentWidget().setSizePolicy(
+                QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Preferred
+            )
+            group.setContentsMargins(0, 0, 0, 0)
+            group.setSpacing(6)
+        tools.addWidget(self.configuration_tools)
+        tools.addWidget(self.session_tools)
+        tools.addStretch(1)
+        for key, title, tooltip in (
+            (
+                "load_config_btn",
+                "Load config",
+                "Load an experiment configuration; local ports stay unchanged",
+            ),
+            (
+                "save_config_btn",
+                "Save config",
+                "Save current settings, gas flows, shutdown flows and selected recipe",
+            ),
+            (
+                "connections_btn",
+                "Devices",
+                "Configure ports and serial settings on this computer",
+            ),
+            (
+                "preview_results_btn",
+                "Results",
+                "Open results previewer in a separate process",
+            ),
+            (
+                "details_toggle",
+                "Session log",
+                "Open connection, progress and error messages",
+            ),
+            ("guide_button", "Help", "Open the operator guide"),
+        ):
+            button = QToolButton()
+            button.setText(title)
+            button.setToolTip(tooltip)
+            setattr(self, key, button)
+            group = (
+                configuration
+                if key in ("load_config_btn", "save_config_btn", "connections_btn")
+                else navigation
+            )
+            group.addWidget(button)
+        self.details_toggle.setCheckable(True)
+        self.guide_button.clicked.connect(self.show_guide)
         self.preview_results_btn.clicked.connect(self.open_results_previewer)
-        layout.addWidget(self.preview_results_btn)
+        layout.addWidget(self.header_tools, 1)
+        layout.setStretch(2, 0)
         layout.addWidget(self.theme_selector)
         return header
+
+    def refresh_mode_badge(self):
+        simulated = self.config.hardware.use_mock
+        self.mode_badge.setText("SIMULATION" if simulated else "REAL INSTRUMENTS")
+        self.mode_badge.setToolTip(
+            "Mock devices · no physical outputs"
+            if simulated
+            else "This session controls connected laboratory instruments"
+        )
+
+    def apply_configuration(self, config):
+        """Replace the preparation form only after a profile is fully validated."""
+        setup = SetupPanel(config)
+        notes = SampleNotes(config)
+        old_notes = self.sample_notes
+        self.setup_view.layout().replaceWidget(old_notes, notes)
+        self.sample_notes = notes
+        old_notes.hide()
+        old_notes.deleteLater()
+        old = self.setup
+        self.setup_view.layout().replaceWidget(old, setup)
+        self.config = config
+        self.setup = setup
+        old.hide()
+        old.deleteLater()
+        setup.changed.connect(self.refresh_summary)
+        setup.changed.connect(self.update_plot_availability)
+        self.plots.clear()
+        self.plots.gas_names = config.hardware.mfc_controller.gas_names
+        self.refresh_mode_badge()
+        self.update_plot_availability()
+        self.refresh_summary()
+
+    def place_header_tools(self, compact):
+        self.header_tools_layout.setDirection(
+            QBoxLayout.Direction.TopToBottom
+            if self.width() < 760
+            else QBoxLayout.Direction.LeftToRight
+        )
+        self.header_tools_layout.setSpacing(6 if self.width() < 760 else 24)
+        self.header_top.setStretch(2, 1 if compact else 0)
+        target = self.header_layout if compact else self.header_top
+        if target.indexOf(self.header_tools) < 0:
+            self.header_layout.removeWidget(self.header_tools)
+            self.header_top.removeWidget(self.header_tools)
+            if compact:
+                self.header_layout.addWidget(self.header_tools)
+            else:
+                self.header_top.insertWidget(
+                    self.header_top.count() - 1, self.header_tools, 1
+                )
 
     def open_results_previewer(self):
         from PyQt6.QtWidgets import QMessageBox
@@ -129,6 +234,8 @@ class Dashboard(QMainWindow):
         title = QLabel("Prepare your measurement")
         title.setProperty("role", "sectionTitle")
         layout.addWidget(title)
+        self.sample_notes = SampleNotes(self.config)
+        layout.addWidget(self.sample_notes)
         self.setup = SetupPanel(self.config)
         layout.addWidget(self.setup, 1)
         self.summary = hint("")
@@ -162,6 +269,17 @@ class Dashboard(QMainWindow):
         )
         buttons.addWidget(self.stop_btn)
         actions_layout.addLayout(buttons)
+        self.saved_file = hint("")
+        self.saved_file.setTextFormat(Qt.TextFormat.RichText)
+        self.saved_file.setTextInteractionFlags(
+            Qt.TextInteractionFlag.LinksAccessibleByMouse
+            | Qt.TextInteractionFlag.LinksAccessibleByKeyboard
+        )
+        self.saved_file.linkActivated.connect(
+            lambda _: self.details_toggle.setChecked(True)
+        )
+        self.saved_file.hide()
+        actions_layout.addWidget(self.saved_file)
         self.safety_note = hint(
             "Stopping turns off sources and applies the configured shutdown gas flows."
         )
@@ -212,7 +330,8 @@ class Dashboard(QMainWindow):
         self.fit_plots_btn = QPushButton("Full range")
         self.fit_plots_btn.setToolTip(
             "Show all retained plot history (up to 10,000 samples per curve), "
-            "including spikes. Recording continues. Full history is saved to CSV."
+            "including spikes, and keep updating as new readings arrive. "
+            "Zooming or panning pauses following. Full history is saved to CSV."
         )
         plot_controls = QHBoxLayout()
         self.robust_plots = QCheckBox("Spike-resistant")
@@ -269,32 +388,11 @@ class Dashboard(QMainWindow):
         return panel
 
     def build_details(self):
-        container = QWidget()
-        layout = QVBoxLayout(container)
-        layout.setContentsMargins(0, 0, 0, 0)
-        row = QHBoxLayout()
-        self.details_toggle = QToolButton()
-        self.details_toggle.setText("Session details")
-        self.details_toggle.setToolButtonStyle(
-            Qt.ToolButtonStyle.ToolButtonTextBesideIcon
-        )
-        self.details_toggle.setArrowType(Qt.ArrowType.RightArrow)
-        self.details_toggle.setCheckable(True)
-        row.addWidget(self.details_toggle)
-        self.saved_file = hint("Data is saved automatically while measuring.")
-        self.saved_file.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse
-        )
-        row.addWidget(self.saved_file, 1)
-        self.guide_button = QPushButton("Operator guide")
-        self.guide_button.clicked.connect(self.show_guide)
-        row.addWidget(self.guide_button)
-        layout.addLayout(row)
         self.console_display = QPlainTextEdit()
         self.console_display.setReadOnly(True)
         self.console_display.setMaximumBlockCount(1000)
         self.details_dialog = QDialog(self)
-        self.details_dialog.setWindowTitle("Session details")
+        self.details_dialog.setWindowTitle("Session log")
         self.details_dialog.resize(760, 400)
         details_layout = QVBoxLayout(self.details_dialog)
         details_layout.addWidget(self.console_display)
@@ -302,13 +400,9 @@ class Dashboard(QMainWindow):
             lambda: self.details_toggle.setChecked(False)
         )
         self.details_toggle.toggled.connect(self.toggle_details)
-        return container
 
     def toggle_details(self, expanded):
         self.details_dialog.setVisible(expanded)
-        self.details_toggle.setArrowType(
-            Qt.ArrowType.DownArrow if expanded else Qt.ArrowType.RightArrow
-        )
 
     def refresh_summary(self):
         setup = self.setup
@@ -354,9 +448,7 @@ class Dashboard(QMainWindow):
         ):
             self.metrics[key].setText(f"— {unit}")
         self.readout.setText("Live readings · waiting for first sample")
-        self.saved_file.setText(
-            "Recording · CSV is written after every sensor reading."
-        )
+        self.saved_file.hide()
 
     def show_reading(self, data):
         self.plots.append(data)
@@ -405,6 +497,7 @@ class Dashboard(QMainWindow):
             compact = self.width() < 980
             self.compact_nav.setVisible(compact)
             self.place_actions(compact)
+            self.place_header_tools(self.width() < 1180)
             self.summary.setVisible(not compact)
             self.outer.setSpacing(8 if compact else 12)
             self.splitter.setOrientation(
@@ -418,7 +511,9 @@ class Dashboard(QMainWindow):
         if target.indexOf(self.actions) < 0:
             self.actions.parentWidget().layout().removeWidget(self.actions)
             if compact:
-                self.outer.insertWidget(self.outer.count() - 1, self.actions)
+                self.outer.insertWidget(
+                    self.outer.indexOf(self.splitter) + 1, self.actions
+                )
             else:
                 self.setup_column_layout.addWidget(self.actions)
         self.action_buttons.setDirection(
