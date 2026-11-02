@@ -98,6 +98,7 @@ class Config:
         experiment = data.get("experiment", {})
         if not isinstance(experiment, dict):
             raise ValueError("experiment must be a mapping")
+        self.load_annotations(result, experiment)
         result.manual_flows = flows(
             experiment.get("manual_flows_sccm", {}),
             result.hardware.mfc_controller.range_sccm,
@@ -121,6 +122,14 @@ class Config:
             )
         if version == 1 and result.shutdown_flows is None:
             raise ValueError("Portable configurations require shutdown_flows_sccm")
+
+    @staticmethod
+    def load_annotations(result, experiment):
+        for key in ("sample_label", "experiment_notes"):
+            value = experiment.get(key, "")
+            if not isinstance(value, str):
+                raise ValueError(f"{key} must be text")
+            setattr(result, key, value)
 
 
 def load_failure_flows(config):

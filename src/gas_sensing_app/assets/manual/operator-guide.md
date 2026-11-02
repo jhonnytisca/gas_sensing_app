@@ -38,6 +38,21 @@ are resolved against the loaded configuration's folder; absolute folders stay
 absolute. Saving elsewhere does not itself change the active output directory;
 loading that saved file applies its relative paths.
 
+### Sample label and experiment notes
+
+Expand **Sample & notes** above the preparation tabs to enter an optional
+**Sample label** and multiline **Experiment notes**. Use these for sample IDs,
+preparation details, special conditions or other descriptions. The section starts
+collapsed to preserve workspace space; expand it to review or clear values before
+starting. Both fields are included by **Save config** and restored by **Load config**.
+Older configurations without these fields load with empty values.
+
+Each run takes its own copy of the text before acquisition and records it as
+`sample_label` and `experiment_notes` in the `.metadata.json` sidecar. Both fields
+are read-only during recording and editable again after stopping. Notes are not
+added to the experimental CSV: its columns and measurement values are unchanged.
+These fields are run descriptions, not timestamped observations during acquisition.
+
 ### Device ports belong to this computer
 
 Experiment exports omit all device addresses and serial transport settings.

@@ -24,6 +24,7 @@ from PyQt6.QtWidgets import (
 from gas_sensing_app.gui.styles.theme_manager import DEFAULT_THEME, load_theme
 
 from .widgets.plots import MeasurementPlots
+from .widgets.sample_notes import SampleNotes
 from .widgets.setup_panel import SetupPanel, hint
 from .widgets.theme_selector import ThemeSelector
 
@@ -176,6 +177,12 @@ class Dashboard(QMainWindow):
     def apply_configuration(self, config):
         """Replace the preparation form only after a profile is fully validated."""
         setup = SetupPanel(config)
+        notes = SampleNotes(config)
+        old_notes = self.sample_notes
+        self.setup_view.layout().replaceWidget(old_notes, notes)
+        self.sample_notes = notes
+        old_notes.hide()
+        old_notes.deleteLater()
         old = self.setup
         self.setup_view.layout().replaceWidget(old, setup)
         self.config = config
@@ -227,6 +234,8 @@ class Dashboard(QMainWindow):
         title = QLabel("Prepare your measurement")
         title.setProperty("role", "sectionTitle")
         layout.addWidget(title)
+        self.sample_notes = SampleNotes(self.config)
+        layout.addWidget(self.sample_notes)
         self.setup = SetupPanel(self.config)
         layout.addWidget(self.setup, 1)
         self.summary = hint("")

@@ -126,7 +126,7 @@ class DashboardController:
             )
             source = save_profile(
                 path,
-                self.config,
+                replace(self.config, **self.window.sample_notes.values()),
                 measurement,
                 gate,
                 self.flow_targets(),
@@ -248,6 +248,7 @@ class DashboardController:
                 HardwareFactory(self.config).validate(profile)
             run_config = replace(
                 self.config,
+                **self.window.sample_notes.values(),
                 measurement=measurement,
                 gate=gate,
                 manual_flows=self.flow_targets(),
@@ -270,6 +271,7 @@ class DashboardController:
         self.window.load_config_btn.setEnabled(False)
         self.window.connections_btn.setEnabled(False)
         self.window.setup.set_running(True)
+        self.window.sample_notes.set_running(True)
         self.window.setup.gate_group.setEnabled(False)
         self.window.start_manual_btn.setEnabled(False)
         self.window.start_recipe_btn.setEnabled(False)
@@ -346,6 +348,7 @@ class DashboardController:
         self.window.load_config_btn.setEnabled(True)
         self.window.connections_btn.setEnabled(True)
         self.window.setup.set_running(False)
+        self.window.sample_notes.set_running(False)
         self.window.setup.gate_group.setEnabled(True)
         self.window.start_manual_btn.setEnabled(True)
         self.window.start_recipe_btn.setEnabled(bool(self.recipe_path))

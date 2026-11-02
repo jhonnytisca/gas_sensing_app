@@ -128,6 +128,8 @@ class ExperimentEngine:
             {
                 "created_at_utc": datetime.now(timezone.utc).isoformat(),
                 "elapsed_time_origin": "instrument preparation completed",
+                "sample_label": self.config.sample_label,
+                "experiment_notes": self.config.experiment_notes,
                 "measurement_initial": asdict(self.measurement),
                 "measurement_details": measurement_metadata(self.measurement),
                 "configuration_events": [],

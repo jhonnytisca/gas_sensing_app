@@ -399,3 +399,52 @@ def test_missing_real_ports_prompt_before_creating_worker(qtbot, tmp_path, monke
     assert controller.worker is None
     assert not window.running
     controller.close_log()
+
+
+def test_sample_notes_profile_and_metadata_only(qtbot, tmp_path):
+    import json
+
+    window, controller = make_window(qtbot, tmp_path)
+    panel = window.sample_notes
+    assert panel.body.isHidden()
+    panel.toggle.click()
+    label = "SnO₂ · sample B / device 03"
+    notes = (
+        "Prepared yesterday.\nSpecial condition: 20 ms settling.\n"
+        "Gas response observation."
+    )
+    panel.sample_label.setText(label)
+    panel.experiment_notes.setPlainText(notes)
+    profile = tmp_path / "sample.yaml"
+    assert controller.save_configuration_file(profile)
+    panel.sample_label.clear()
+    assert controller.load_configuration_file(profile)
+    panel = window.sample_notes
+    assert panel.body.isHidden()
+    assert panel.values() == {"sample_label": label, "experiment_notes": notes}
+    window.setup.interval.setValue(0.02)
+    controller.start("manual")
+    worker = controller.worker
+    try:
+        qtbot.waitUntil(lambda: bool(window.plots.history), timeout=3000)
+        assert panel.sample_label.isReadOnly()
+        assert panel.experiment_notes.isReadOnly()
+    finally:
+        controller.stop()
+        qtbot.waitUntil(lambda: controller.worker is None, timeout=3000)
+        controller.close_log()
+    assert not panel.sample_label.isReadOnly()
+    assert not panel.experiment_notes.isReadOnly()
+    panel.experiment_notes.setPlainText("Notes for the next experiment")
+    metadata = json.loads(
+        Path(worker.engine.log_path).with_suffix(".metadata.json").read_text()
+    )
+    assert metadata["sample_label"] == label
+    assert metadata["experiment_notes"] == notes
+    with open(worker.engine.log_path) as stream:
+        reader = csv.DictReader(stream)
+        assert "sample_label" not in reader.fieldnames
+        assert "experiment_notes" not in reader.fieldnames
+        assert list(reader)
+    content = Path(worker.engine.log_path).read_text()
+    assert label not in content and "Prepared yesterday" not in content

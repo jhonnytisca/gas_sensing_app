@@ -77,6 +77,8 @@ def save_profile(
         "acquisition_mode",
         "recipe_file",
         "shutdown_flows",
+        "sample_label",
+        "experiment_notes",
     ):
         payload.pop(key)
     # Device addresses and transport settings belong to the local computer.
@@ -90,6 +92,8 @@ def save_profile(
     payload["shutdown_flows_sccm"] = load_failure_flows(config)
     payload["experiment"] = {
         "mode": mode,
+        "sample_label": config.sample_label,
+        "experiment_notes": config.experiment_notes,
         "manual_flows_sccm": targets,
         "manual_shutter_open": shutter_open,
         "recipe_file": None,
