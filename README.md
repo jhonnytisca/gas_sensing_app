@@ -141,13 +141,10 @@ configuration file), rather than remembering the last browsed folder. An explici
   the footer reports how many plotted values are outside the current Y view.
   **Full view** includes all extrema. Wheel to zoom, drag to pan, or use the
   right-click axis controls; **Fit view** restores the full time interval.
-- **Legacy flow correction** is off for every newly loaded file. Enable only for
-  older double-scaled files. Editable per-channel divisors apply to reported
-  flows, never setpoints. Defaults come from metadata full scales divided by 100,
-  or historical CH1/2 = 10 and CH3/4 = 2 when metadata is missing. Confirm these
-  against the settings used for that experiment. New corrected CSVs need no
-  correction. Both plots and PNG exports label the correction state.
-- **Session details** shows matching `.metadata.json` when available. Old CSVs
+- **Additional label:** optional text shown above the curves and included in PNG
+  exports. It resets when selecting another file and does not modify CSV or JSON.
+  Gas flows are displayed as stored, without preview scaling.
+- **Full JSON** shows matching `.metadata.json` when available. Old CSVs
   (`device`, `step`) and new CSVs (`sensor_id`, `recipe_step`) are supported.
 - **Export PNG** saves the current visible plots and zoom. **Reload file** refreshes
   a snapshot, including a file still being recorded; source data is never edited.

@@ -60,7 +60,6 @@ def test_load_formats_preserves_flow_when_resistance_missing(tmp_path, old):
     assert result.values["gas_2_air_actual_sccm"][1] == 2000
     assert len(result.time_s) == 200
     assert len(result.scan_ids) == 100
-    assert result.flow_divisors()[2] == 10
 
 
 def test_metadata_and_invalid_rows(tmp_path):
@@ -112,7 +111,7 @@ def test_default_folder_and_replace_add_do_not_modify_sources(tmp_path):
     assert one.exists() and two.exists()
 
 
-def test_previewer_selection_correction_zoom_export_and_lists(qtbot, tmp_path):
+def test_previewer_selection_label_zoom_export_and_lists(qtbot, tmp_path):
     first = write_result(tmp_path / "first" / "one.csv", old=True)
     second = write_result(tmp_path / "second" / "two.csv")
     before = first.read_bytes()
@@ -121,19 +120,21 @@ def test_previewer_selection_correction_zoom_export_and_lists(qtbot, tmp_path):
     window.show()
     qtbot.waitUntil(lambda: window.result is not None, timeout=5000)
     assert window.list_mode.currentIndex() == 0
-    assert not window.correction.isChecked()
+    assert not hasattr(window, "correction")
+    assert window.annotation.text() == ""
     assert set(window.plots) == {"resistance_ohm", "flows"}
     assert window.plots["flows"].viewRange()[1][1] < 80000
     original = window.result.values["gas_2_air_actual_sccm"].copy()
-    window.correction.setChecked(True)
+    window.annotation.setText("After cleaning <repeat 2>")
+    assert "After cleaning &lt;repeat 2&gt;" in window.export_note.text
     setpoint, reported = window.curves["flows"]
     assert setpoint[1][0] == 200
-    assert reported[1][0] == 200
+    assert reported[1][0] == 2000
     assert np.array_equal(window.result.values["gas_2_air_actual_sccm"], original)
     window.full_view()
-    assert window.plots["flows"].viewRange()[1][1] > 8000
+    assert window.plots["flows"].viewRange()[1][1] > 80000
     window.robust.setChecked(True)
-    assert window.plots["flows"].viewRange()[1][1] < 8000
+    assert window.plots["flows"].viewRange()[1][1] < 80000
     # Selecting a sensor with unavailable R must still show its gas measurements.
     window.sensors.item(0).setCheckState(Qt.CheckState.Unchecked)
     assert not window.curves["resistance_ohm"]
@@ -152,7 +153,8 @@ def test_previewer_selection_correction_zoom_export_and_lists(qtbot, tmp_path):
         lambda: window.result is not None and window.result.path == second, timeout=5000
     )
     assert window.paths == [second]
-    assert not window.correction.isChecked()
+    assert not hasattr(window, "correction")
+    assert window.annotation.text() == ""
     assert window.default_folder == first.parent
     # A late background response must never overwrite the newer selection.
     window.loaded(window.load_token - 1, load_result(first), "")
@@ -180,3 +182,41 @@ def test_launch_is_separate_process_with_actual_save_folder(monkeypatch, tmp_pat
         str(tmp_path / "experiments"),
     ]
     assert calls[0][2] == str(tmp_path)
+
+
+def test_identification_visible_without_json_dialog(qtbot, tmp_path):
+    path = write_result(tmp_path / "sample" / "experiment" / "measurement.csv")
+    path.with_suffix(".metadata.json").write_text(
+        json.dumps(
+            {
+                "data_file": path.name,
+                "sample_name": "SiGeI_20210310c",
+                "device": "102,103,106",
+                "experiment_name": "NO2",
+                "description": "Repeat after cleaning",
+                "session_state": "stopped",
+                "measurement_initial": {
+                    "mode": "constant_voltage",
+                    "bias_voltage": 3.3,
+                    "compliance": 1e-5,
+                    "interval_s": 1.0,
+                },
+            }
+        )
+    )
+    window = ResultsPreviewer(tmp_path)
+    qtbot.addWidget(window)
+    window.show()
+    qtbot.waitUntil(lambda: window.result is not None, timeout=5000)
+    summary = window.experiment_summary.text()
+    for value in (
+        "SiGeI_20210310c",
+        "102,103,106",
+        "NO2",
+        "Repeat after cleaning",
+        "stopped",
+        "3.3V",
+    ):
+        assert value in summary
+    assert window.metadata_button.text() == "Full JSON"
+    assert window.recursive.isChecked()

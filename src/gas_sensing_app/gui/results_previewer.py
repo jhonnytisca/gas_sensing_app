@@ -11,12 +11,11 @@ from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDialog,
-    QDoubleSpinBox,
     QFileDialog,
-    QFormLayout,
     QFrame,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QListWidget,
     QListWidgetItem,
     QMainWindow,
@@ -76,7 +75,7 @@ class LoadFile(QRunnable):
 
 
 class ResultsPreviewer(QMainWindow):
-    def __init__(self, default_folder):
+    def __init__(self, default_folder, autoload=True):
         super().__init__()
         self.default_folder = Path(default_folder).resolve()
         self.paths = []
@@ -85,7 +84,6 @@ class ResultsPreviewer(QMainWindow):
         self.curves = {}
         self.plots = {}
         self.export_note = None
-        self.divisors = {}
         self.busy = False
         self.setWindowTitle("Gas Sensing · Results previewer")
         self.resize(1350, 900)
@@ -98,7 +96,7 @@ class ResultsPreviewer(QMainWindow):
         title.setObjectName("pageTitle")
         header.addWidget(title)
         header.addStretch()
-        self.metadata_button = QPushButton("Session details")
+        self.metadata_button = QPushButton("Full JSON")
         self.metadata_button.clicked.connect(self.show_metadata)
         header.addWidget(self.metadata_button)
         self.export_button = QPushButton("Export PNG")
@@ -108,6 +106,25 @@ class ResultsPreviewer(QMainWindow):
         self.theme_selector.currentIndexChanged.connect(self.change_theme)
         header.addWidget(self.theme_selector)
         layout.addLayout(header)
+        self.experiment_summary = QLabel(
+            "Select a measurement to see its identification."
+        )
+        self.experiment_summary.setWordWrap(True)
+        self.experiment_summary.setTextFormat(Qt.TextFormat.PlainText)
+        self.experiment_summary.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        layout.addWidget(self.experiment_summary)
+        annotation_row = QHBoxLayout()
+        annotation_row.addWidget(QLabel("Additional label"))
+        self.annotation = QLineEdit()
+        self.annotation.setAccessibleName("Additional label")
+        self.annotation.setPlaceholderText(
+            "Optional note for this graph and its PNG export"
+        )
+        self.annotation.textChanged.connect(self.fit_y)
+        annotation_row.addWidget(self.annotation)
+        layout.addLayout(annotation_row)
         split = QSplitter()
         layout.addWidget(split, 1)
         side = QWidget()
@@ -127,6 +144,7 @@ class ResultsPreviewer(QMainWindow):
             row.addWidget(button)
         sidebar.addLayout(row)
         self.recursive = QCheckBox("Include subfolders")
+        self.recursive.setChecked(True)
         sidebar.addWidget(self.recursive)
         self.folder_label = QLabel(str(self.default_folder))
         self.folder_label.setWordWrap(True)
@@ -165,18 +183,6 @@ class ResultsPreviewer(QMainWindow):
         self.gases.setMaximumHeight(125)
         self.gases.itemChanged.connect(self.redraw)
         sidebar.addWidget(self.gases)
-        self.correction = QCheckBox("Legacy flow correction (preview only)")
-        self.correction.setToolTip(
-            "Off by default. Divide reported flows only; setpoints stay unchanged. "
-            "Do not enable for files already saved without extra scaling."
-        )
-        self.correction.toggled.connect(self.correction_changed)
-        sidebar.addWidget(self.correction)
-        self.divisor_panel = QWidget()
-        self.divisor_form = QFormLayout(self.divisor_panel)
-        self.divisor_form.setContentsMargins(0, 0, 0, 0)
-        self.divisor_panel.hide()
-        sidebar.addWidget(self.divisor_panel)
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setWidget(side)
@@ -254,7 +260,8 @@ class ResultsPreviewer(QMainWindow):
         self.fit_timer.setInterval(150)
         self.fit_timer.timeout.connect(self.fit_y)
         self.change_theme()
-        self.open_default()
+        if autoload:
+            self.open_default()
 
     def open_default(self):
         self.open_folder(self.default_folder, replace=True)
@@ -300,7 +307,7 @@ class ResultsPreviewer(QMainWindow):
         self.files.blockSignals(True)
         self.files.clear()
         for path in self.paths:
-            item = QListWidgetItem(path.name)
+            item = QListWidgetItem(path.parent.name + " / " + path.name)
             item.setToolTip(str(path))
             self.files.addItem(item)
         self.files.blockSignals(False)
@@ -320,12 +327,13 @@ class ResultsPreviewer(QMainWindow):
         self.busy = True
         self.sensors.clear()
         self.gases.clear()
-        self.correction.setChecked(False)
+        self.annotation.clear()
         self.busy = False
         self.canvas.clear()
         self.export_note = None
         self.plots.clear()
         self.curves.clear()
+        self.experiment_summary.setText("Loading measurement…")
         self.export_button.setEnabled(False)
         self.metadata_button.setEnabled(False)
         if index < 0:
@@ -348,6 +356,28 @@ class ResultsPreviewer(QMainWindow):
             self.status.setText(f"Cannot preview this file: {error}")
             return
         self.result = result
+        from gas_sensing_app.core.organization import conditions
+
+        meta = result.metadata or {}
+        sample = meta.get("sample_name") or meta.get("sample_label") or "Unknown"
+        date = (
+            meta.get("acquisition_started_at_utc")
+            or meta.get("created_at_utc")
+            or "Unknown"
+        )
+        description = meta.get("description") or meta.get("experiment_notes") or "—"
+        settings_text = conditions(meta.get("measurement_initial") or {}).replace(
+            "__", " · "
+        )
+        self.experiment_summary.setText(
+            f"Sample: {sample}   |   "
+            f"Device: {meta.get('device') or 'Unknown'}   |   "
+            f"Experiment: {meta.get('experiment_name') or 'Unnamed'}\n"
+            f"Conditions: {settings_text}   |   "
+            f"State: {meta.get('session_state') or 'Unknown'}   |   "
+            f"Date: {date}\n"
+            f"Description: {description}"
+        )
         self.busy = True
         for sensor in result.sensor_ids:
             mask = result.sensors == sensor
@@ -363,22 +393,12 @@ class ResultsPreviewer(QMainWindow):
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
             item.setCheckState(Qt.CheckState.Checked)
             self.sensors.addItem(item)
-        while self.divisor_form.rowCount():
-            self.divisor_form.removeRow(0)
-        self.divisors.clear()
         for channel, gas in sorted(result.gases.items()):
             item = QListWidgetItem(f"CH{channel} · {gas['name']}")
             item.setData(Qt.ItemDataRole.UserRole, channel)
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
             item.setCheckState(Qt.CheckState.Checked)
             self.gases.addItem(item)
-            divisor = QDoubleSpinBox()
-            divisor.setDecimals(4)
-            divisor.setRange(0.0001, 1000000)
-            divisor.setValue(result.flow_divisors()[channel])
-            divisor.valueChanged.connect(self.redraw)
-            self.divisors[channel] = divisor
-            self.divisor_form.addRow(f"CH{channel} reported ÷", divisor)
         for key, button in self.signal_buttons.items():
             available = (
                 bool(result.gases)
@@ -386,7 +406,6 @@ class ResultsPreviewer(QMainWindow):
                 else key in result.values and np.isfinite(result.values[key]).any()
             )
             button.setEnabled(bool(available))
-        self.correction.setEnabled(bool(result.gases))
         self.busy = False
         self.metadata_button.setEnabled(True)
         self.robust.setChecked(True)
@@ -407,10 +426,6 @@ class ResultsPreviewer(QMainWindow):
                 Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked
             )
         self.busy = False
-        self.redraw()
-
-    def correction_changed(self):
-        self.divisor_panel.setVisible(self.correction.isChecked())
         self.redraw()
 
     def redraw(self, *_):
@@ -478,8 +493,6 @@ class ResultsPreviewer(QMainWindow):
                 if kind not in gas or not control.isChecked():
                     continue
                 values = self.result.values[gas[kind]][sensor_mask]
-                if kind == "actual" and self.correction.isChecked():
-                    values = values / self.divisors[ch].value()
                 label = "set" if kind == "setpoint" else "reported"
                 self.add_curve(
                     "flows",
@@ -540,18 +553,11 @@ class ResultsPreviewer(QMainWindow):
             "Wheel: zoom; drag: pan."
         )
         if self.export_note is not None:
-            correction = "Correction OFF"
-            if self.correction.isChecked():
-                correction = "Flow correction: " + ", ".join(
-                    f"CH{ch}÷{spin.value():g}"
-                    for ch, spin in self.divisors.items()
-                    if ch in self.checked_items(self.gases)
-                )
-            self.plot_note = f"{correction} · {mode} · {outside} off-scale"
+            self.plot_note = f"{mode} · {outside} off-scale"
+            annotation = self.annotation.text().strip()
+            note = escape(annotation) + "<br>" if annotation else ""
             self.export_note.setText(
-                self.plot_note,
-                color=self.foreground,
-                size="8pt",
+                note + escape(self.plot_note), color=self.foreground, size="8pt"
             )
             self.canvas.setToolTip(self.view_note.text())
         self.summary()
@@ -611,18 +617,32 @@ class ResultsPreviewer(QMainWindow):
                 QMessageBox.warning(self, "Export failed", str(exc))
 
     def export_png(self, path):
-        # Include the filename in exports without duplicating it above live plots.
+        # Reuse the visible identification so exported images carry the same context.
         if self.export_note is not None:
+            lines = self.experiment_summary.text().splitlines()
+            heading = escape(lines[0]) if lines else ""
+            details = "<br>".join(escape(line) for line in lines[1:])
+            annotation = self.annotation.text().strip()
+            if annotation:
+                details += "<br>Label: " + escape(annotation)
             self.export_note.setText(
-                f"{escape(self.result.path.name)}<br>{self.plot_note}", size="8pt"
+                f'<span style="font-size:12pt;font-weight:600">{heading}</span><br>'
+                f'<span style="font-size:10pt">{details}</span><br>'
+                f'<span style="font-size:8pt">{escape(self.result.path.name)}<br>'
+                f"{escape(self.plot_note)}</span>",
+                color=self.foreground,
             )
         try:
+            self.canvas.ci.layout.activate()
+            from PyQt6.QtWidgets import QApplication
+
+            QApplication.processEvents()
             exporter = ImageExporter(self.canvas.scene())
             exporter.parameters()["width"] = 1800
             exporter.export(str(path))
         finally:
             if self.export_note is not None:
-                self.export_note.setText(self.plot_note, size="8pt")
+                self.fit_y()
 
     def closeEvent(self, event):
         self.load_token += 1

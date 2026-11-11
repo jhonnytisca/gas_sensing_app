@@ -38,20 +38,15 @@ are resolved against the loaded configuration's folder; absolute folders stay
 absolute. Saving elsewhere does not itself change the active output directory;
 loading that saved file applies its relative paths.
 
-### Sample label and experiment notes
+### Experiment identification
 
-Expand **Sample & notes** above the preparation tabs to enter an optional
-**Sample label** and multiline **Experiment notes**. Use these for sample IDs,
-preparation details, special conditions or other descriptions. The section starts
-collapsed to preserve workspace space; expand it to review or clear values before
-starting. Both fields are included by **Save config** and restored by **Load config**.
-Older configurations without these fields load with empty values.
-
-Each run takes its own copy of the text before acquisition and records it as
-`sample_label` and `experiment_notes` in the `.metadata.json` sidecar. Both fields
-are read-only during recording and editable again after stopping. Notes are not
-added to the experimental CSV: its columns and measurement values are unchanged.
-These fields are run descriptions, not timestamped observations during acquisition.
+Enter **Sample name**, free-text **Device** (for example `102-105` or
+`102,103,106`), **Experiment name**, and multiline **Description** before starting.
+These fields are saved in configurations and session JSON and locked during recording.
+Results are grouped by sample, then a dated experiment folder containing CSV, JSON,
+and an automatically generated full-file `plot.png`. Unknown fields use explicit
+placeholders. The results viewer shows identification and conditions above the plots;
+**Full JSON** opens all session metadata. Existing images are retained.
 
 ### Device ports belong to this computer
 
@@ -661,11 +656,10 @@ view, never data. The footer reports values outside the view. Use **Full view**
 for all extrema, the wheel to zoom and drag to pan. **Fit view** restores the
 whole time interval. PNG export captures the current visible plots and ranges.
 
-**Legacy flow correction** is optional and off by default. For older files with
-double scaling, set the appropriate divisor for each reported gas flow (the old
-full-scale range divided by 100; historically 10, 10, 2, 2). It does not change
-setpoints or source files. Leave it off for files saved by the corrected driver.
-**Session details** displays matching metadata; **Reload file** refreshes the
+**Additional label** adds an optional note above the curves and in PNG exports.
+It resets when switching files and does not change session metadata or CSV data.
+Flows are displayed directly from stored values, without preview scaling.
+**Full JSON** displays matching metadata; **Reload file** refreshes the
 read-only snapshot. The Linux Mint launcher is `preview-results.desktop` in the
 project root; see the README for installation and path settings.
 
