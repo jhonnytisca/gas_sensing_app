@@ -33,26 +33,6 @@ class ResultData:
     def sensor_ids(self):
         return list(dict.fromkeys(self.sensors.tolist()))
 
-    def flow_divisors(self):
-        ranges = (
-            (self.metadata or {})
-            .get("hardware", {})
-            .get("mfc_controller", {})
-            .get("range_sccm", {})
-        )
-        defaults = {1: 1000, 2: 1000, 3: 200, 4: 200}
-        result = {}
-        for channel in self.gases:
-            value = ranges.get(str(channel), defaults.get(channel, 100))
-            try:
-                value = float(value) / 100
-                if not math.isfinite(value) or value <= 0:
-                    raise ValueError
-            except (TypeError, ValueError):
-                value = 1
-            result[channel] = value
-        return result
-
 
 def default_data_folder(config_path):
     """Read only the save-folder setting; no instrument validation or config writes."""

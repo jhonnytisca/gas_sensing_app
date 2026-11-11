@@ -406,22 +406,28 @@ def test_sample_notes_profile_and_metadata_only(qtbot, tmp_path):
 
     window, controller = make_window(qtbot, tmp_path)
     panel = window.sample_notes
-    assert panel.body.isHidden()
-    panel.toggle.click()
+    assert not panel.body.isHidden()
     label = "SnO₂ · sample B / device 03"
     notes = (
         "Prepared yesterday.\nSpecial condition: 20 ms settling.\n"
         "Gas response observation."
     )
     panel.sample_label.setText(label)
+    panel.device.setText("102,103,106")
+    panel.experiment_name.setText("NO2")
     panel.experiment_notes.setPlainText(notes)
     profile = tmp_path / "sample.yaml"
     assert controller.save_configuration_file(profile)
     panel.sample_label.clear()
     assert controller.load_configuration_file(profile)
     panel = window.sample_notes
-    assert panel.body.isHidden()
-    assert panel.values() == {"sample_label": label, "experiment_notes": notes}
+    assert not panel.body.isHidden()
+    assert panel.values() == {
+        "sample_name": label,
+        "device": "102,103,106",
+        "experiment_name": "NO2",
+        "description": notes,
+    }
     window.setup.interval.setValue(0.02)
     controller.start("manual")
     worker = controller.worker
@@ -439,8 +445,12 @@ def test_sample_notes_profile_and_metadata_only(qtbot, tmp_path):
     metadata = json.loads(
         Path(worker.engine.log_path).with_suffix(".metadata.json").read_text()
     )
-    assert metadata["sample_label"] == label
-    assert metadata["experiment_notes"] == notes
+    assert metadata["sample_name"] == label
+    assert metadata["description"] == notes
+    assert metadata["device"] == "102,103,106"
+    assert metadata["experiment_name"] == "NO2"
+    assert "D102,103,106" in Path(worker.engine.log_path).parent.name
+    assert (Path(worker.engine.log_path).parent / "plot.png").is_file()
     with open(worker.engine.log_path) as stream:
         reader = csv.DictReader(stream)
         assert "sample_label" not in reader.fieldnames

@@ -12,6 +12,7 @@ from gas_sensing_app.config.validation import finite, flows
 from gas_sensing_app.hardware.factory import HardwareFactory
 
 from .metadata import measurement_metadata
+from .organization import session_folder
 from .storage import MeasurementCSV
 
 
@@ -119,7 +120,9 @@ class ExperimentEngine:
         self.on_status("Preparing instruments")
         cfg = self.config.logging.data_log
         self.csv = MeasurementCSV(
-            Path(self.config.base_dir) / cfg.folder,
+            session_folder(
+                Path(self.config.base_dir) / cfg.folder, self.config, self.measurement
+            ),
             cfg.filename_prefix,
             self.config.hardware.mfc_controller.gas_names,
         )
@@ -128,6 +131,10 @@ class ExperimentEngine:
             {
                 "created_at_utc": datetime.now(timezone.utc).isoformat(),
                 "elapsed_time_origin": "instrument preparation completed",
+                "sample_name": self.config.sample_name,
+                "device": self.config.device,
+                "experiment_name": self.config.experiment_name,
+                "description": self.config.description,
                 "sample_label": self.config.sample_label,
                 "experiment_notes": self.config.experiment_notes,
                 "measurement_initial": asdict(self.measurement),

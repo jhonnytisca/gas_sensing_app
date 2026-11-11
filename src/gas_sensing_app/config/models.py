@@ -248,5 +248,9 @@ class AppConfig:
     recipe_file: str | None = None
     shutdown_flows: dict[int, float] | None = None
     configuration_source: dict = field(default_factory=dict)
+    sample_name: str = ""
+    device: str = ""
+    experiment_name: str = ""
+    description: str = ""
     sample_label: str = ""
     experiment_notes: str = ""

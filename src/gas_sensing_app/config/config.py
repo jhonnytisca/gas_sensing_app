@@ -125,7 +125,14 @@ class Config:
 
     @staticmethod
     def load_annotations(result, experiment):
-        for key in ("sample_label", "experiment_notes"):
+        for key in (
+            "sample_name",
+            "device",
+            "experiment_name",
+            "description",
+            "sample_label",
+            "experiment_notes",
+        ):
             value = experiment.get(key, "")
             if not isinstance(value, str):
                 raise ValueError(f"{key} must be text")

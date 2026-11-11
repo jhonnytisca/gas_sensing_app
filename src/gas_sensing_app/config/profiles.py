@@ -77,6 +77,10 @@ def save_profile(
         "acquisition_mode",
         "recipe_file",
         "shutdown_flows",
+        "sample_name",
+        "device",
+        "experiment_name",
+        "description",
         "sample_label",
         "experiment_notes",
     ):
@@ -92,6 +96,10 @@ def save_profile(
     payload["shutdown_flows_sccm"] = load_failure_flows(config)
     payload["experiment"] = {
         "mode": mode,
+        "sample_name": config.sample_name,
+        "device": config.device,
+        "experiment_name": config.experiment_name,
+        "description": config.description,
         "sample_label": config.sample_label,
         "experiment_notes": config.experiment_notes,
         "manual_flows_sccm": targets,

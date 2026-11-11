@@ -358,12 +358,49 @@ class DashboardController:
         for index in (0, 1):
             self.window.setup.control_tabs.setTabEnabled(index, True)
         if worker.engine.log_path:
+            from pathlib import Path
+
+            original = Path(worker.engine.log_path)
+            state = getattr(worker.engine.csv, "metadata", {}).get("session_state")
+            suffix = (
+                state
+                if state in ("stopped", "failed")
+                else (
+                    "modified"
+                    if getattr(worker.engine.csv, "metadata", {}).get(
+                        "configuration_events"
+                    )
+                    else None
+                )
+            )
+            if suffix:
+                try:
+                    target = original.parent.with_name(
+                        original.parent.name + "__" + suffix
+                    )
+                    original.parent.rename(target)
+                    worker.engine.log_path = target / original.name
+                    worker.engine.csv.path = worker.engine.log_path
+                    worker.engine.csv.metadata_path = (
+                        worker.engine.log_path.with_suffix(".metadata.json")
+                    )
+                except OSError as exc:
+                    self.log(f"Could not label session folder: {exc}")
             self.log(f"CSV: {worker.engine.log_path}")
             self.window.saved_file.setText('<a href="session-log">CSV saved</a>')
             self.window.saved_file.setToolTip(
                 f"{worker.engine.log_path}\nOpen Session log for the full CSV path."
             )
             self.window.saved_file.show()
+        if worker.engine.log_path:
+            try:
+                from gas_sensing_app.gui.plot_export import export_overview_isolated
+
+                image = export_overview_isolated(worker.engine.log_path)
+                if image:
+                    self.log(f"Plot: {image}")
+            except Exception as exc:
+                self.log(f"Plot export failed; CSV preserved: {exc}")
         if worker.engine.errors:
             self.error(worker.engine.errors[-1])
         self.worker = None
