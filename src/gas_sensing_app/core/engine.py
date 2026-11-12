@@ -4,11 +4,11 @@ import threading
 import time
 from dataclasses import asdict, replace
 from datetime import datetime, timezone
-from pathlib import Path
 
 from gas_sensing_app.config.config import load_failure_flows
 from gas_sensing_app.config.connections import connection_values
 from gas_sensing_app.config.validation import finite, flows
+from gas_sensing_app.config.workspace import output_root
 from gas_sensing_app.hardware.factory import HardwareFactory
 
 from .metadata import measurement_metadata
@@ -121,7 +121,7 @@ class ExperimentEngine:
         cfg = self.config.logging.data_log
         self.csv = MeasurementCSV(
             session_folder(
-                Path(self.config.base_dir) / cfg.folder, self.config, self.measurement
+                output_root(self.config) / cfg.folder, self.config, self.measurement
             ),
             cfg.filename_prefix,
             self.config.hardware.mfc_controller.gas_names,

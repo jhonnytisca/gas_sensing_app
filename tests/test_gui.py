@@ -11,7 +11,8 @@ from gas_sensing_app.gui.dashboard import Dashboard
 def test_manual_window_lifecycle_and_linked_plots(qtbot, tmp_path):
     path = tmp_path / "config.yaml"
     template = (
-        Path(__file__).parents[1] / "src/gas_sensing_app/assets/config.template.yaml"
+        Path(__file__).parents[1]
+        / "src/gas_sensing_app/assets/defaults/config.template.yaml"
     )
     path.write_text(template.read_text())
     (tmp_path / "failure_gases.yaml").write_text("mfc_flows: {1: 10}")
@@ -47,7 +48,8 @@ def test_manual_window_lifecycle_and_linked_plots(qtbot, tmp_path):
 def make_window(qtbot, tmp_path):
     path = tmp_path / "config.yaml"
     template = (
-        Path(__file__).parents[1] / "src/gas_sensing_app/assets/config.template.yaml"
+        Path(__file__).parents[1]
+        / "src/gas_sensing_app/assets/defaults/config.template.yaml"
     )
     path.write_text(template.read_text())
     (tmp_path / "failure_gases.yaml").write_text("mfc_flows: {}")
@@ -458,3 +460,60 @@ def test_sample_notes_profile_and_metadata_only(qtbot, tmp_path):
         assert list(reader)
     content = Path(worker.engine.log_path).read_text()
     assert label not in content and "Prepared yesterday" not in content
+
+
+def test_save_configuration_named_folder_and_replace_confirmation(
+    qtbot, tmp_path, monkeypatch
+):
+    from PyQt6.QtWidgets import QInputDialog, QMessageBox
+
+    window, controller = make_window(qtbot, tmp_path)
+    monkeypatch.setattr(QInputDialog, "getText", lambda *args: ("Gas test", True))
+    recipe = tmp_path / "source.yaml"
+    recipe.write_text("steps: [{duration: 1, mfc_flows: {1: 10}}]")
+    controller.load_recipe_file(str(recipe))
+    controller.save_configuration()
+    folder = tmp_path / "configurations" / "Gas test"
+    assert {p.name for p in folder.iterdir()} == {
+        "Gas test.config.yaml",
+        "Gas test.recipe.yaml",
+    }
+    previous = (folder / "Gas test.config.yaml").read_bytes()
+    window.setup.flow_inputs[1].setValue(42)
+    monkeypatch.setattr(
+        QMessageBox, "question", lambda *args: QMessageBox.StandardButton.No
+    )
+    controller.save_configuration()
+    assert (folder / "Gas test.config.yaml").read_bytes() == previous
+    monkeypatch.setattr(
+        QMessageBox, "question", lambda *args: QMessageBox.StandardButton.Yes
+    )
+    controller.save_configuration()
+    assert controller.load_configuration_file(folder / "Gas test.config.yaml")
+    assert window.setup.flow_inputs[1].value() == 42
+    assert controller.configurations_dir == tmp_path / "configurations"
+    monkeypatch.setattr(QInputDialog, "getText", lambda *args: ("../escape", True))
+    controller.save_configuration()
+    assert "without path separators" in window.status_label.text()
+    assert not (tmp_path / "escape").exists()
+    controller.close_log()
+
+
+def test_workspace_configuration_keeps_shared_save_and_console_folders(qtbot, tmp_path):
+    from gas_sensing_app.config.workspace import initialize_workspace
+
+    config = initialize_workspace(tmp_path)
+    window = Dashboard(config)
+    controller = DashboardController(window, config)
+    qtbot.addWidget(window)
+    root = tmp_path / "workspace"
+    folder = root / "configurations/test"
+    try:
+        assert Path(controller.console_log.name).parent == root / "console_logs"
+        assert controller.save_configuration_file(folder, bundle=True)
+        assert controller.load_configuration_file(folder / "test.config.yaml")
+        assert controller.configurations_dir == root / "configurations"
+        assert Path(controller.console_log.name).parent == root / "console_logs"
+        assert not (folder / "console_logs").exists()
+    finally:
+        controller.close_log()

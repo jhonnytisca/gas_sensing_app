@@ -6,14 +6,19 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from PyQt6.QtCore import QTimer
-from PyQt6.QtWidgets import QDialog, QFileDialog
+from PyQt6.QtWidgets import QDialog, QFileDialog, QInputDialog, QMessageBox
 
 from gas_sensing_app.config.config import load_failure_flows
 from gas_sensing_app.config.connections import (
     connection_problems,
     save_local_connections,
 )
-from gas_sensing_app.config.profiles import load_profile, save_profile
+from gas_sensing_app.config.profiles import (
+    load_profile,
+    save_profile,
+    save_profile_bundle,
+)
+from gas_sensing_app.config.workspace import output_root
 from gas_sensing_app.core.recipe import load_recipe
 from gas_sensing_app.core.worker import ExperimentWorker
 from gas_sensing_app.gui.connections_dialog import ConnectionsDialog
@@ -24,6 +29,7 @@ from gas_sensing_app.hardware.factory import HardwareFactory
 class DashboardController:
     def __init__(self, window, config):
         self.window, self.config = window, config
+        self.configurations_dir = output_root(config) / "configurations"
         self.worker = None
         self.recipe_path = None
         self.closing = False
@@ -47,7 +53,7 @@ class DashboardController:
         console = config.logging.console_log
         if not console.enabled:
             return None
-        folder = Path(config.base_dir) / console.folder
+        folder = output_root(config) / console.folder
         folder.mkdir(parents=True, exist_ok=True)
         stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S_%fZ")
         return (folder / f"{console.filename_prefix}_{stamp}.log").open(
@@ -64,7 +70,7 @@ class DashboardController:
         path, _ = QFileDialog.getOpenFileName(
             self.window,
             "Load experiment configuration",
-            self.config.base_dir,
+            str(self.configurations_dir),
             "YAML (*.yaml *.yml)",
         )
         if path:
@@ -105,18 +111,40 @@ class DashboardController:
         return True
 
     def save_configuration(self):
-        path, _ = QFileDialog.getSaveFileName(
+        name, accepted = QInputDialog.getText(
             self.window,
             "Save experiment configuration",
-            self.config.base_dir,
-            "YAML (*.yaml *.yml)",
+            "Configuration name:",
         )
-        if path:
-            if Path(path).suffix.lower() not in (".yaml", ".yml"):
-                path += ".yaml"
-            self.save_configuration_file(path)
+        if not accepted:
+            return
+        name = name.strip()
+        if (
+            not name
+            or name in (".", "..")
+            or any(char in name for char in '<>:"/\\|?*')
+            or name.endswith(".")
+            or any(ord(char) < 32 for char in name)
+        ):
+            self.error(
+                "Use a configuration name without path separators "
+                "or special characters."
+            )
+            return
+        folder = self.configurations_dir / name
+        if folder.exists() or folder.is_symlink():
+            answer = QMessageBox.question(
+                self.window,
+                "Replace configuration?",
+                f"Replace the saved configuration in {folder}?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                return
+        self.save_configuration_file(folder, bundle=True)
 
-    def save_configuration_file(self, path):
+    def save_configuration_file(self, path, *, bundle=False):
         try:
             measurement, gate = self.window.settings()
             mode = (
@@ -124,7 +152,8 @@ class DashboardController:
                 if self.window.setup.control_tabs.currentIndex() == 1
                 else "manual"
             )
-            source = save_profile(
+            save = save_profile_bundle if bundle else save_profile
+            source = save(
                 path,
                 replace(self.config, **self.window.sample_notes.values()),
                 measurement,
@@ -138,7 +167,7 @@ class DashboardController:
             self.error(f"Configuration not saved: {exc}")
             return False
         self.config.configuration_source = source
-        self.status(f"Configuration saved: {Path(path).name}")
+        self.status(f"Configuration saved: {source['path']}")
         return True
 
     def configure_devices(self):
@@ -189,7 +218,10 @@ class DashboardController:
 
     def select_recipe(self):
         path, _ = QFileDialog.getOpenFileName(
-            self.window, "Select recipe", self.config.base_dir, "YAML (*.yaml *.yml)"
+            self.window,
+            "Select recipe",
+            str(output_root(self.config) / "recipes"),
+            "YAML (*.yaml *.yml)",
         )
         if path:
             self.load_recipe_file(path)

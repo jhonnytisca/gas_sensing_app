@@ -1,31 +1,26 @@
 """Application composition root; no hardware I/O before the user starts a run."""
 
 import argparse
-import shutil
 import sys
 from pathlib import Path
 
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import QApplication, QMessageBox
 
-from gas_sensing_app.config.config import Config
+from gas_sensing_app.config.workspace import startup_config
 
 ASSETS_DIR = Path(__file__).resolve().parent / "assets"
 
 
 def main():
     parser = argparse.ArgumentParser(description="Gas sensor acquisition")
-    parser.add_argument("--config", default="config.yaml")
+    parser.add_argument("--config", help="Load an existing configuration YAML")
     args = parser.parse_args()
     app = QApplication(sys.argv[:1])
     app.setApplicationName("GasSensingApp")
     app.setWindowIcon(QIcon(str(ASSETS_DIR / "icon.png")))
     try:
-        path = Path(args.config).resolve()
-        if not path.exists():
-            path.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(ASSETS_DIR / "config.template.yaml", path)
-        config = Config(path).load()
+        config = startup_config(args.config)
         from gas_sensing_app.config.connections import load_local_connections
 
         try:
@@ -37,10 +32,6 @@ def main():
                 f"Local connections could not be loaded: {exc}\n"
                 "Startup YAML addresses will be used. Open Devices to correct them.",
             )
-        failure_path = Path(config.base_dir) / config.safety_file
-        if config.shutdown_flows is None and not failure_path.exists():
-            failure_path.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(ASSETS_DIR / "failure_gases.template.yaml", failure_path)
         # Delay GUI imports until QApplication exists (font/theme setup).
         from gas_sensing_app.controllers.dashboard_controller import DashboardController
         from gas_sensing_app.gui.dashboard import Dashboard

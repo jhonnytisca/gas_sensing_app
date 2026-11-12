@@ -5,15 +5,6 @@ channels:
 dependencies:
   - python=3.10
   - pip
-  - pyyaml>=6.0
-  - pyqt6>=6.4.0
-  - pyqtgraph>=0.13.0
-  - pyvisa
-  - pyserial
-  - pymeasure
-  - pyvisa-py
-  - zeroconf
-  - psutil
-  # This block tells Conda to hand the final local installation over to pip
+  # Project dependencies are maintained in pyproject.toml.
   - pip:
     - -e .

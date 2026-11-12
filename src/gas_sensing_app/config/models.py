@@ -242,6 +242,7 @@ class AppConfig:
     gate: GateSettings = field(default_factory=GateSettings)
     safety_file: str = "failure_gases.yaml"
     base_dir: str = "."
+    workspace_dir: str | None = None
     manual_flows: dict[int, float] = field(default_factory=dict)
     manual_shutter_open: bool = False
     acquisition_mode: str = "manual"

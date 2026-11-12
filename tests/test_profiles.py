@@ -24,7 +24,8 @@ from gas_sensing_app.core.recipe import load_recipe
 def profile_config(tmp_path):
     path = tmp_path / "startup.yaml"
     template = (
-        Path(__file__).parents[1] / "src/gas_sensing_app/assets/config.template.yaml"
+        Path(__file__).parents[1]
+        / "src/gas_sensing_app/assets/defaults/config.template.yaml"
     )
     path.write_text(template.read_text())
     (tmp_path / "failure_gases.yaml").write_text("mfc_flows: {1: 12, 2: 3}")
@@ -176,3 +177,102 @@ def test_unsupported_profile_and_missing_recipe_rejected(profile_config, tmp_pat
     path.write_text(yaml.safe_dump(raw))
     with pytest.raises(FileNotFoundError):
         load_profile(path, profile_config)
+
+
+def test_bundle_move_replace_and_manual_without_recipe(profile_config, tmp_path):
+    from gas_sensing_app.config.profiles import save_profile_bundle
+
+    config = profile_config
+    recipe = tmp_path / "original.yaml"
+    recipe.write_text("# exact copy\nsteps: [{duration: 1, mfc_flows: {1: 10}}]")
+    folder = tmp_path / "configurations" / "Gas test"
+
+    def save(recipe_path, mode="recipe"):
+        return save_profile_bundle(
+            folder,
+            config,
+            config.measurement,
+            config.gate,
+            {},
+            False,
+            mode,
+            recipe_path,
+        )
+
+    info = save(recipe)
+    assert Path(info["path"]) == folder / "Gas test.config.yaml"
+    assert {p.name for p in folder.iterdir()} == {
+        "Gas test.config.yaml",
+        "Gas test.recipe.yaml",
+    }
+    assert (folder / "Gas test.recipe.yaml").read_bytes() == recipe.read_bytes()
+    raw = yaml.safe_load((folder / "Gas test.config.yaml").read_text())
+    assert raw["experiment"]["recipe_file"] == "Gas test.recipe.yaml"
+    moved = tmp_path / "other_computer" / "Gas test"
+    moved.parent.mkdir()
+    shutil.copytree(folder, moved)
+    recipe.unlink()
+    loaded = load_profile(moved / "Gas test.config.yaml", config)
+    assert load_recipe(loaded.recipe_file, loaded, loaded.gate)[0].flows[1] == 10
+    # Updating from the bundle's own recipe must also work.
+    (folder / "notes.txt").write_text("Keep my notes")
+    save(folder / "Gas test.recipe.yaml")
+    save(None, "manual")
+    assert not (folder / "Gas test.recipe.yaml").exists()
+    assert (folder / "notes.txt").read_text() == "Keep my notes"
+    assert load_profile(folder / "Gas test.config.yaml", config).recipe_file is None
+
+
+def test_bundle_failed_replacement_restores_both_files(
+    profile_config, tmp_path, monkeypatch
+):
+    from gas_sensing_app.config import profiles
+
+    config = profile_config
+    folder = tmp_path / "bundle"
+    recipe = tmp_path / "recipe.yaml"
+    recipe.write_text("steps: [{duration: 1, mfc_flows: {1: 10}}]")
+
+    def save():
+        profiles.save_profile_bundle(
+            folder,
+            config,
+            config.measurement,
+            config.gate,
+            {},
+            False,
+            "recipe",
+            recipe,
+        )
+
+    save()
+    previous = {p.name: p.read_bytes() for p in folder.iterdir()}
+    recipe.write_text("steps: [{duration: 2, mfc_flows: {1: 20}}]")
+    original_replace = profiles.os.replace
+
+    def fail_install(source, destination):
+        if (
+            Path(destination) == folder / "bundle.recipe.yaml"
+            and Path(source).name == "bundle.recipe.yaml"
+        ):
+            raise OSError("disk error")
+        return original_replace(source, destination)
+
+    monkeypatch.setattr(profiles.os, "replace", fail_install)
+    with pytest.raises(OSError, match="disk error"):
+        save()
+    assert {p.name: p.read_bytes() for p in folder.iterdir()} == previous
+    assert not list(tmp_path.glob(".configuration-*"))
+    assert load_profile(folder / "bundle.config.yaml", config).recipe_file
+
+
+def test_shipped_configuration_example_is_portable(profile_config):
+    path = (
+        Path(__file__).parents[1]
+        / "src/gas_sensing_app/assets/configuration.example"
+        / "configuration.example.config.yaml"
+    )
+    loaded = load_profile(path, profile_config)
+    assert loaded.acquisition_mode == "recipe"
+    assert Path(loaded.recipe_file) == path.parent / "configuration.example.recipe.yaml"
+    assert load_recipe(loaded.recipe_file, loaded, loaded.gate)

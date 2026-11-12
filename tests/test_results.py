@@ -98,10 +98,11 @@ def test_spike_resistant_bounds_preserve_short_setpoints_and_samples():
 
 
 def test_default_folder_and_replace_add_do_not_modify_sources(tmp_path):
-    config = tmp_path / "config.yaml"
+    config = tmp_path / "workspace/settings/config.yaml"
+    config.parent.mkdir(parents=True)
     config.write_text("logging:\n  data_log:\n    folder: experiments\n")
     folder = default_data_folder(config)
-    assert folder == tmp_path / "experiments"
+    assert folder == tmp_path / "workspace/experiments"
     one = write_result(folder / "one.csv")
     two = write_result(folder / "nested" / "two.csv")
     assert list_csv_files(folder) == [one]
@@ -171,7 +172,8 @@ def test_launch_is_separate_process_with_actual_save_folder(monkeypatch, tmp_pat
         lambda *args: (calls.append(args) or True, 123),
     )
     config = SimpleNamespace(
-        base_dir=str(tmp_path),
+        base_dir=str(tmp_path / "workspace/settings"),
+        workspace_dir=str(tmp_path / "workspace"),
         logging=SimpleNamespace(data_log=SimpleNamespace(folder="experiments")),
     )
     launch_previewer(config)
@@ -179,9 +181,9 @@ def test_launch_is_separate_process_with_actual_save_folder(monkeypatch, tmp_pat
         "-m",
         "gas_sensing_app.preview_results",
         "--folder",
-        str(tmp_path / "experiments"),
+        str(tmp_path / "workspace/experiments"),
     ]
-    assert calls[0][2] == str(tmp_path)
+    assert calls[0][2] == str(tmp_path / "workspace")
 
 
 def test_identification_visible_without_json_dialog(qtbot, tmp_path):

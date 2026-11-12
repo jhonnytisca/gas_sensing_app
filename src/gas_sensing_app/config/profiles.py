@@ -5,7 +5,7 @@ import os
 from copy import deepcopy
 from dataclasses import asdict
 from pathlib import Path
-from tempfile import NamedTemporaryFile
+from tempfile import NamedTemporaryFile, TemporaryDirectory
 
 import yaml
 
@@ -46,7 +46,7 @@ def source_info(path):
 
 
 def load_profile(path, local_config):
-    config = Config(path).load()
+    config = Config(path, workspace_dir=local_config.workspace_dir).load()
     apply_connections(config, connection_values(local_config))
     # Validate all dependencies before changing the running GUI.
     load_failure_flows(config)
@@ -55,6 +55,65 @@ def load_profile(path, local_config):
 
         load_recipe(config.recipe_file, config, config.gate)
     return config
+
+
+def save_profile_bundle(
+    folder, config, measurement, gate, targets, shutter_open, mode, recipe_path
+):
+    """Validate and stage a portable folder before replacing its owned files."""
+    folder = Path(folder).absolute()
+    if folder.is_symlink():
+        raise ValueError("Configuration folder must not be a symbolic link")
+    config_name = f"{folder.name}.config.yaml"
+    recipe_name = f"{folder.name}.recipe.yaml"
+    folder.parent.mkdir(parents=True, exist_ok=True)
+    with TemporaryDirectory(prefix=".configuration-", dir=folder.parent) as temporary:
+        staging = Path(temporary)
+        staged_config = staging / config_name
+        save_profile(
+            staged_config,
+            config,
+            measurement,
+            gate,
+            targets,
+            shutter_open,
+            mode,
+            recipe_path,
+        )
+        payload = yaml.safe_load(staged_config.read_text(encoding="utf-8"))
+        if payload["experiment"]["recipe_file"]:
+            (staging / payload["experiment"]["recipe_file"]).rename(
+                staging / recipe_name
+            )
+            payload["experiment"]["recipe_file"] = recipe_name
+            atomic_yaml(staged_config, payload)
+        if not folder.exists():
+            os.replace(staging, folder)
+        else:
+            _replace_bundle_files(folder, staging, (config_name, recipe_name))
+    return source_info(folder / config_name)
+
+
+def _replace_bundle_files(folder, staging, names):
+    # Keep any recordings or other user files in the existing folder.
+    backed_up, installed = [], []
+    try:
+        for name in names:
+            destination = folder / name
+            if destination.exists() or destination.is_symlink():
+                if destination.is_dir():
+                    raise ValueError(f"Expected a file: {destination}")
+                os.replace(destination, staging / f"previous-{name}")
+                backed_up.append(name)
+            if (staging / name).exists():
+                os.replace(staging / name, destination)
+                installed.append(name)
+    except Exception:
+        for name in reversed(installed):
+            (folder / name).unlink()
+        for name in reversed(backed_up):
+            os.replace(staging / f"previous-{name}", folder / name)
+        raise
 
 
 def save_profile(
@@ -71,6 +130,7 @@ def save_profile(
     payload = deepcopy(asdict(config))
     for key in (
         "base_dir",
+        "workspace_dir",
         "configuration_source",
         "manual_flows",
         "manual_shutter_open",

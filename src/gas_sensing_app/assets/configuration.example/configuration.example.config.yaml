@@ -1,0 +1,88 @@
+# Portable experiment configuration example.
+# Load this file with Load config; keep configuration.example.recipe.yaml in the same folder.
+# Device ports are assigned locally through Devices.
+hardware:
+  use_mock: true
+  keithley_2400:
+    auto_range: false
+    manual_range: 200000
+    four_wire: true
+  shutter:
+    open_angle: 90
+    closed_angle: 0
+    enabled: true
+  mfc_controller:
+    range_sccm:
+      1: 1000.0
+      2: 1000.0
+      3: 200.0
+      4: 200.0
+    gas_names:
+      1: not_connected
+      2: reference
+      3: analyte
+      4: not_connected
+  keithley_2700: {}
+logging:
+  data_log:
+    folder: data
+    filename_prefix: gas_experiment
+  console_log:
+    enabled: true
+    folder: console_logs
+    filename_prefix: system_console
+measurement:
+  instrument: '2400'
+  mode: constant_voltage
+  wire_mode: 2
+  slot: 1
+  first_channel: 1
+  last_channel: 1
+  bias_voltage: 1.0
+  compliance: 0.01
+  interval_s: 1.0
+  auto_range: true
+  manual_range: 200000.0
+  source_current: 5.0e-07
+  voltage_compliance: 2.0
+  source_auto_range: true
+  source_voltage_range: 20.0
+  source_current_range: 1.0e-06
+  voltage_auto_range: true
+  voltage_range: 20.0
+  current_auto_range: true
+  current_range: 1.0e-06
+  pulsed: false
+  settling_s: 0.01
+  nplc: 1.0
+gate:
+  enabled: false
+  mode: fixed
+  voltage: 0.0
+  start: 0.0
+  stop: 1.0
+  step: 0.1
+  dwell_s: 1.0
+  current_limit: 0.001
+  max_voltage: 65.0
+configuration_version: 1
+shutdown_flows_sccm:
+  1: 0.0
+  2: 0.0
+  3: 0.0
+  4: 0.0
+experiment:
+  mode: recipe
+  sample_name: Example sensor
+  device: ''
+  experiment_name: Example gas exposure
+  description: ''
+  sample_label: ''
+  experiment_notes: ''
+  manual_flows_sccm:
+    1: 0.0
+    2: 0.0
+    3: 0.0
+    4: 0.0
+  manual_shutter_open: false
+  recipe_file: configuration.example.recipe.yaml

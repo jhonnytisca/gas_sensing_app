@@ -1,0 +1,30 @@
+# Baseline Gas Sensing Recipe Profile
+# Use lowercase 'true' or 'false' for the shutter_open control.
+
+steps:
+  - name: "System Baseline Purge"
+    duration: 60
+    shutter_open: false
+    mfc_flows:
+      1: 100 # Carrier Gas High
+      2: 100
+      3: 0
+      4: 0
+
+  - name: "Target Gas Exposure"
+    duration: 120
+    shutter_open: true # Triggers physical open_angle set in config
+    mfc_flows:
+      1: 180
+      2: 20 # Target Gas Active
+      3: 0
+      4: 0
+
+  - name: "Recovery Purge"
+    duration: 90
+    shutter_open: false
+    mfc_flows:
+      1: 100
+      2: 100
+      3: 0
+      4: 0

@@ -1,5 +1,6 @@
 # Master Configuration Template for Gas Sensing Dashboard
-# Copy this file to the root directory as 'config.yaml' to modify live settings.
+# Installed automatically as workspace/settings/config.yaml on first startup.
+# Relative output folders are resolved from the workspace root.
 
 hardware:
   use_mock: true # Set to false to connect to actual instruments

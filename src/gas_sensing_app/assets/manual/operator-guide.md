@@ -13,30 +13,39 @@ There is no bottom toolbar, leaving more vertical room for the plots. Start/Stop
 remain below the preparation column, and stay accessible in compact view.
 The Gate tab remains hidden.
 
-**Save config** exports the current preparation form to a versioned YAML file:
+**Save config** asks for a configuration name and exports the current preparation
+form to `workspace/configurations/<name>/<name>.config.yaml`. The workspace stays
+the save location when other configurations are loaded. Existing names require
+confirmation before replacement.
+The versioned YAML includes:
 measurement instrument, wiring, source level and compliance, automatic/manual
 ranges, pulses, settling delay, integration time, interval, manual gas flows,
 shutter selection, acquisition mode, gas channel names/capacities, logging
 preferences, and shutdown flows. Shutdown flows are embedded in the exported
-file, so its original `failure_gases.yaml` is not needed when moving it. For a
-legacy configuration, edit its shutdown file before saving to capture the intended
+file, so its original `failure_gases.yaml` is not needed when moving it. For the
+general configuration, edit its shutdown file before saving to capture the intended
 purge/stop values. Saving does not start or reconfigure instruments.
 
 If a recipe is selected, its exact contents are copied alongside the configuration
-as `<configuration-name>.recipe.<content-hash>.yaml`, and the configuration refers
-to that relative filename. **Copy both files to another computer.** Manual mode
+as `<name>.recipe.yaml`, and the configuration refers to that relative filename.
+**Copy the entire configuration folder to another computer.** Manual mode
 can retain a selected recipe for later use. Saving in recipe mode requires a valid
-recipe. Do not rename or remove the recipe sidecar without updating its reference.
+recipe. Without a selected recipe, a manual configuration contains only
+`<name>.config.yaml`. Do not rename or remove the recipe without updating its
+reference.
+The local `workspace/` directory is ignored by Git. A complete example is shipped
+in `assets/configuration.example/`, including `configuration.example.config.yaml`
+and `configuration.example.recipe.yaml`.
 
-**Load config** validates the entire file, shutdown flows and referenced recipe
-before replacing the preparation form. Invalid or missing dependencies leave the
-current form intact. Existing legacy `config.yaml` files can also be loaded;
-their external shutdown file must be present. Loading clears the displayed plot
+**Load config** opens the configurations directory; select the `<name>.config.yaml`
+inside the desired folder. It validates the entire file, shutdown flows and
+referenced recipe before replacing the preparation form. Invalid or missing
+dependencies leave the current form intact. Loading clears the displayed plot
 history; existing CSV recordings remain on disk. Review the restored settings
 and simulation/real-instrument badge before pressing Start. Relative output folders
-are resolved against the loaded configuration's folder; absolute folders stay
-absolute. Saving elsewhere does not itself change the active output directory;
-loading that saved file applies its relative paths.
+are resolved against the active workspace root; absolute folders stay absolute.
+Loading a saved experiment keeps the shared data and console-log locations.
+Explicit configurations outside a workspace use the launch directory's workspace.
 
 ### Experiment identification
 
@@ -67,7 +76,7 @@ and shutter enablement belong to the experiment and are retained by **Save confi
 Saving in **Devices** stores transport settings in `device_connections.yaml` in
 the operating system's application configuration directory (the exact path is shown
 in the dialog). They are reused at startup and retained when loading another
-experiment, including a legacy file containing another computer's ports. Existing
+experiment. Existing
 startup YAML ports are the fallback until local assignments have been saved.
 Fresh templates leave assignments empty. Missing required assignments prompt for
 Devices on profile load or before starting; cancelling never starts a run. Ports
@@ -219,13 +228,23 @@ and readback must be integrated and checked on the bench.
 
 ## 3. Configure the laboratory once
 
-The application reads `config.yaml` in the directory from which it is launched,
-or the file passed with `--config`. Edit it while no experiment is running, then
+The application reads `workspace/settings/config.yaml` in the directory from
+which it is launched, or an existing file passed with `--config`. On first startup,
+missing general settings and shutdown flows are copied from the installed
+`assets/defaults/` templates. Fresh defaults use simulation, unassigned device
+ports and zero shutdown flows. Invalid existing files produce an error and are
+not reset. Explicit missing `--config` paths also produce an error.
+
+The previous root-level structure is not read or migrated automatically. Move
+existing settings, configurations, recipes and recordings into the workspace
+manually. Existing root files and directories are left untouched.
+
+Edit `workspace/settings/config.yaml` while no experiment is running, then
 reload it with **Load config**, or restart the application. Existing configurations
 are not overwritten. Local assignments saved through **Devices** take precedence
 over startup YAML ports.
 
-The complete reference is `src/gas_sensing_app/assets/config.template.yaml`.
+The complete reference is `src/gas_sensing_app/assets/defaults/config.template.yaml`.
 Important fields are:
 
 | Setting | What to enter |
@@ -464,7 +483,8 @@ mode, current limit and measured voltage before changing settings further.
 
 ### Set the shutdown gas profile
 
-Before running, edit `failure_gases.yaml` next to the configuration file:
+Before running, edit `workspace/settings/failure_gases.yaml` (or the shutdown
+file referenced by an explicitly loaded configuration):
 
 ```yaml
 # Example: all gases off. Replace only with laboratory-approved purge flows.
@@ -481,8 +501,10 @@ The profile applies after normal completion, Stop, window closure and detected
 failure. It is loaded at the start of the session: editing it during a run does
 not change that run's shutdown behavior.
 
-All relative configuration paths are resolved against the configuration file's
-directory. For example, `data` and `failure_gases.yaml` belong to that directory.
+Within a workspace, relative output paths such as `data` and `console_logs`
+resolve from the workspace root. Recipe and shutdown-file references resolve
+from the configuration file's directory. Absolute paths remain unchanged.
+Explicit configurations outside a workspace use the launch directory's workspace.
 
 ## 4. Open the application and understand the workspace
 

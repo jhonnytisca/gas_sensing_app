@@ -20,8 +20,11 @@ from .validation import finite, flows
 
 
 class Config:
-    def __init__(self, path: str | Path):
+    def __init__(self, path: str | Path, *, workspace_dir=None):
         self.path = Path(path).resolve()
+        from .workspace import workspace_for_path
+
+        self.workspace_dir = workspace_dir or workspace_for_path(self.path)
 
     def load(self) -> AppConfig:
         with self.path.open(encoding="utf-8") as stream:
@@ -80,6 +83,7 @@ class Config:
             gate=GateSettings(**data.get("gate", {})),
             safety_file=data.get("safety_file", "failure_gases.yaml"),
             base_dir=str(self.path.parent),
+            workspace_dir=str(self.workspace_dir) if self.workspace_dir else None,
         )
         self.load_experiment(result, data, version)
         from .profiles import source_info

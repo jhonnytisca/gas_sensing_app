@@ -36,15 +36,18 @@ class ResultData:
 
 def default_data_folder(config_path):
     """Read only the save-folder setting; no instrument validation or config writes."""
+    from gas_sensing_app.config.workspace import default_config_path, workspace_for_path
+
     config_path = Path(config_path).expanduser().resolve()
+    root = workspace_for_path(config_path) or default_config_path().parent.parent
     if not config_path.exists():
-        return config_path.parent / "data"
+        return root / "data"
     with config_path.open(encoding="utf-8") as stream:
         config = yaml.safe_load(stream)
     if not isinstance(config, dict):
         raise ValueError("Configuration must be a YAML mapping")
     folder = config.get("logging", {}).get("data_log", {}).get("folder", "data")
-    return (config_path.parent / Path(folder).expanduser()).resolve()
+    return (root / Path(folder).expanduser()).resolve()
 
 
 def list_csv_files(folder, recursive=False):

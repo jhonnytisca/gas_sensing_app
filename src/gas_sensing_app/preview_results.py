@@ -6,13 +6,15 @@ from pathlib import Path
 
 from PyQt6.QtCore import QProcess
 
+from gas_sensing_app.config.workspace import default_config_path, output_root
+
 
 def launch_previewer(config):
-    folder = (Path(config.base_dir) / config.logging.data_log.folder).resolve()
+    folder = (output_root(config) / config.logging.data_log.folder).resolve()
     started, _ = QProcess.startDetached(
         sys.executable,
         ["-m", "gas_sensing_app.preview_results", "--folder", str(folder)],
-        str(Path(config.base_dir).resolve()),
+        str(output_root(config).resolve()),
     )
     if not started:
         raise RuntimeError("Could not start the results previewer")
@@ -24,7 +26,7 @@ def main():
     )
     parser.add_argument(
         "--config",
-        default="config.yaml",
+        default=str(default_config_path()),
         help="Config whose data folder is the startup default",
     )
     parser.add_argument("--folder", help="Override the default results folder")

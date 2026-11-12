@@ -16,7 +16,8 @@ from gas_sensing_app.hardware.factory import HardwareFactory
 @pytest.fixture
 def config(tmp_path):
     template = (
-        Path(__file__).parents[1] / "src/gas_sensing_app/assets/config.template.yaml"
+        Path(__file__).parents[1]
+        / "src/gas_sensing_app/assets/defaults/config.template.yaml"
     )
     path = tmp_path / "config.yaml"
     path.write_text(template.read_text())
